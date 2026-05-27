@@ -69,12 +69,33 @@
       padding: 12px 16px 0;
     }
 
-    .import-area {
-      padding: 14px 16px;
+    /* Importação compacta */
+    .import-compact {
       display: flex;
-      align-items: center;
-      gap: 12px;
+      gap: 10px;
+      padding: 10px 14px 12px;
     }
+    .import-col {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .import-info-mini {
+      font-size: 0.7rem;
+      color: #94a3b8;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .import-info-mini.ok { color: #10b981; }
+    .btn-sm {
+      padding: 7px 10px;
+      font-size: 0.78rem;
+      border-radius: 8px;
+      gap: 4px;
+    }
+
     .btn {
       display: inline-flex;
       align-items: center;
@@ -302,6 +323,66 @@
     .flash.show { opacity: 1; }
 
     #file-input-compras, #file-input-vendas { display: none; }
+
+    /* Preço Ofertado */
+    .ofertado-wrap {
+      padding: 14px 16px;
+      border-top: 1px solid #f1f5f9;
+      background: #f8fafc;
+    }
+    .ofertado-label {
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #64748b;
+      margin-bottom: 8px;
+      display: block;
+    }
+    .ofertado-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .ofertado-prefix {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #475569;
+    }
+    .ofertado-input {
+      flex: 1;
+      padding: 10px 12px;
+      border: 2px solid #e2e8f0;
+      border-radius: 10px;
+      font-size: 1.1rem;
+      font-weight: 600;
+      font-family: inherit;
+      color: #1e293b;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .ofertado-input:focus { border-color: #4f46e5; }
+    .ofertado-resultado {
+      margin-top: 10px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .of-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+    .of-chip.up   { background: #fef2f2; color: #dc2626; }
+    .of-chip.down { background: #f0fdf4; color: #16a34a; }
+    .of-chip.igual { background: #f1f5f9; color: #64748b; }
+    .of-chip.mk-alto  { background: #f0fdf4; color: #16a34a; }
+    .of-chip.mk-medio { background: #fffbeb; color: #d97706; }
+    .of-chip.mk-baixo { background: #fef2f2; color: #dc2626; }
   </style>
 </head>
 <body>
@@ -320,35 +401,26 @@
   <div class="badge" id="badge-count">Sem dados</div>
 </div>
 
-<!-- IMPORTAR COMPRAS -->
+<!-- IMPORTAR (compacto) -->
 <div class="section">
-  <div class="section-title">Planilha de Compras (Linear)</div>
-  <div class="import-area">
-    <button class="btn btn-indigo" onclick="document.getElementById('file-input-compras').click()">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-      Importar
-    </button>
-    <div class="import-info" id="import-info-compras">
-      <strong>Nenhuma planilha carregada</strong>
-      Preço de compra anterior e atual
+  <div class="section-title">Planilhas</div>
+  <div class="import-compact">
+    <div class="import-col">
+      <button class="btn btn-sm btn-indigo" onclick="document.getElementById('file-input-compras').click()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        Compras
+      </button>
+      <div class="import-info-mini" id="import-info-compras">Não carregada</div>
+    </div>
+    <div class="import-col">
+      <button class="btn btn-sm btn-teal" onclick="document.getElementById('file-input-vendas').click()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        Vendas
+      </button>
+      <div class="import-info-mini" id="import-info-vendas">Não carregada</div>
     </div>
   </div>
   <input type="file" id="file-input-compras" accept=".xlsx,.xls" onchange="importCompras(this)">
-</div>
-
-<!-- IMPORTAR VENDAS -->
-<div class="section">
-  <div class="section-title">Planilha de Vendas (Linear)</div>
-  <div class="import-area">
-    <button class="btn btn-teal" onclick="document.getElementById('file-input-vendas').click()">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-      Importar
-    </button>
-    <div class="import-info" id="import-info-vendas">
-      <strong>Nenhuma planilha carregada</strong>
-      Preço de venda atual (habilita Markup)
-    </div>
-  </div>
   <input type="file" id="file-input-vendas" accept=".xlsx,.xls" onchange="importVendas(this)">
 </div>
 
@@ -522,14 +594,14 @@ function makeColFinder(headers) {
 }
 
 function atualizarUICompras(nomeArq, data) {
-  document.getElementById('import-info-compras').className = 'import-info import-ok';
-  document.getElementById('import-info-compras').innerHTML =
-    `<strong>${nomeArq}</strong>Importado em: ${data}`;
+  const el = document.getElementById('import-info-compras');
+  el.className = 'import-info-mini ok';
+  el.textContent = '✓ ' + nomeArq;
 }
 function atualizarUIVendas(nomeArq, data, total) {
-  document.getElementById('import-info-vendas').className = 'import-info import-ok';
-  document.getElementById('import-info-vendas').innerHTML =
-    `<strong>${nomeArq}</strong>${total} preços de venda — ${data}`;
+  const el = document.getElementById('import-info-vendas');
+  el.className = 'import-info-mini ok';
+  el.textContent = '✓ ' + nomeArq;
 }
 function atualizarBadge() {
   document.getElementById('badge-count').textContent =
@@ -645,6 +717,7 @@ function mostrarProdutoPorBarcode(bc) {
 }
 
 function mostrarResultado(p) {
+  window._produtoAtual = p;
   const card = document.getElementById('result-card');
   card.className = 'result-card result-found';
 
@@ -716,6 +789,16 @@ function mostrarResultado(p) {
     </div>
     <div class="result-name">${escHtml(p.nome)}</div>
     ${pricesHtml}
+    <div class="ofertado-wrap">
+      <label class="ofertado-label">Preço Ofertado pelo Fornecedor</label>
+      <div class="ofertado-row">
+        <span class="ofertado-prefix">R$</span>
+        <input type="number" class="ofertado-input" id="ofertado-input"
+          placeholder="0,00" step="0.01" min="0"
+          oninput="calcularOfertado(this.value)">
+      </div>
+      <div class="ofertado-resultado" id="ofertado-resultado"></div>
+    </div>
     <div class="result-meta">
       <div class="meta-item">Cód. Barra: <span>${escHtml(p.barcode)}</span></div>
       ${p.codigo ? `<div class="meta-item">Cód. Interno: <span>${escHtml(p.codigo)}</span></div>` : ''}
@@ -738,6 +821,40 @@ function mostrarNaoEncontrado(bc) {
     </div>
   `;
   card.style.display = 'block';
+}
+
+// ─── Preço Ofertado ───────────────────────────────────────────────────────────
+function calcularOfertado(val) {
+  const el = document.getElementById('ofertado-resultado');
+  const preco = parseFloat(val);
+  if (!val || isNaN(preco) || preco <= 0) { el.innerHTML = ''; return; }
+
+  const p = window._produtoAtual;
+  const venda = p ? (vendasMap[p.barcode] ?? null) : null;
+  let html = '';
+
+  // Comparação com última compra
+  if (p && p.compra !== null && p.compra > 0) {
+    const diff = ((preco - p.compra) / p.compra) * 100;
+    if (Math.abs(diff) < 0.1) {
+      html += `<span class="of-chip igual">= Igual à última compra</span>`;
+    } else {
+      const cls = diff > 0 ? 'up' : 'down';
+      const txt = diff > 0
+        ? `▲ ${diff.toFixed(1).replace('.', ',')}% mais caro`
+        : `▼ ${Math.abs(diff).toFixed(1).replace('.', ',')}% mais barato`;
+      html += `<span class="of-chip ${cls}">${txt}</span>`;
+    }
+  }
+
+  // Markup com novo preço
+  if (venda !== null && preco > 0) {
+    const mk = ((venda / preco) - 1) * 100;
+    const cls = mk >= 30 ? 'mk-alto' : mk >= 15 ? 'mk-medio' : 'mk-baixo';
+    html += `<span class="of-chip ${cls}">Markup: ${mk.toFixed(1).replace('.', ',')}%</span>`;
+  }
+
+  el.innerHTML = html;
 }
 
 // ─── Utilitários ──────────────────────────────────────────────────────────────
