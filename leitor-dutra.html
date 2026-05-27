@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>Leitor Dutra</title>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: #f1f5f9;
+      color: #1e293b;
+      min-height: 100vh;
+      padding-bottom: 32px;
+    }
+
+    .header {
+      background: #4f46e5;
+      color: white;
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 2px 8px rgba(79,70,229,0.3);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .header-title { font-size: 1.1rem; font-weight: 700; letter-spacing: -0.3px; }
+    .header-sub { font-size: 0.7rem; opacity: 0.8; }
+    .badge {
+      background: rgba(255,255,255,0.2);
+      border-radius: 20px;
+      padding: 4px 10px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .section {
+      margin: 12px;
+      background: white;
+      border-radius: 14px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+      overflow: hidden;
+    }
+    .section-title {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #64748b;
+      padding: 12px 16px 0;
+    }
+
+    .import-area {
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 10px 16px;
+      border-radius: 10px;
+      font-size: 0.875rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: all 0.15s;
+      -webkit-tap-highlight-color: transparent;
+      white-space: nowrap;
+    }
+    .btn:active { transform: scale(0.96); }
+    .btn-indigo { background: #4f46e5; color: white; }
+    .btn-indigo:hover { background: #4338ca; }
+    .btn-teal { background: #0d9488; color: white; }
+    .btn-teal:hover { background: #0f766e; }
+    .btn-red { background: #ef4444; color: white; }
+    .btn-green { background: #10b981; color: white; }
+
+    .import-info {
+      flex: 1;
+      font-size: 0.8rem;
+      color: #64748b;
+      line-height: 1.4;
+    }
+    .import-info strong { color: #1e293b; display: block; font-size: 0.85rem; }
+    .import-ok strong { color: #10b981; }
+    .import-ok { color: #10b981; }
+
+    /* SCANNER */
+    .scanner-controls { padding: 14px 16px; display: flex; gap: 10px; }
+    #reader { border-radius: 12px; overflow: hidden; width: 100% !important; }
+    #reader video { border-radius: 12px; }
+    #reader__dashboard_section_swaplink,
+    #reader__dashboard_section_csr,
+    #html5-qrcode-button-camera-stop,
+    #html5-qrcode-button-camera-start,
+    #html5-qrcode-anchor-scan-type-change { display: none !important; }
+    #reader__status_span { display: none !important; }
+    #reader__dashboard { display: none !important; }
+
+    .scanner-hint { font-size: 0.75rem; color: #94a3b8; padding: 0 16px 14px; display: none; }
+    .scanner-hint.ativo { display: block; color: #10b981; font-weight: 500; }
+
+    /* BUSCA */
+    .search-wrap { padding: 14px 16px; position: relative; }
+    .search-input {
+      width: 100%;
+      padding: 12px 44px 12px 16px;
+      border: 2px solid #e2e8f0;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-family: inherit;
+      color: #1e293b;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .search-input:focus { border-color: #4f46e5; }
+    .search-clear {
+      position: absolute;
+      right: 28px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      color: #94a3b8;
+      font-size: 1.2rem;
+      cursor: pointer;
+      display: none;
+      padding: 4px;
+    }
+
+    /* RESULTADO */
+    .result-card {
+      margin: 12px;
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+      display: none;
+      animation: slideUp 0.2s ease;
+    }
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(10px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .result-found { background: white; }
+    .result-not-found { background: #fef2f2; border: 2px solid #fecaca; }
+
+    .result-header {
+      background: #4f46e5;
+      color: white;
+      padding: 12px 16px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .btn-fechar {
+      background: rgba(255,255,255,0.2);
+      border: none;
+      color: white;
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .btn-fechar:active { background: rgba(255,255,255,0.35); }
+
+    .result-name {
+      padding: 16px 16px 12px;
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: #1e293b;
+      line-height: 1.3;
+      border-bottom: 1px solid #f1f5f9;
+    }
+
+    /* Grade de preços */
+    .result-prices {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1px;
+      background: #f1f5f9;
+    }
+    .price-box {
+      background: white;
+      padding: 14px 16px;
+      text-align: center;
+    }
+    .price-label {
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #64748b;
+      margin-bottom: 4px;
+    }
+    .price-value { font-size: 1.5rem; font-weight: 700; }
+    .price-compra .price-value  { color: #4f46e5; }
+    .price-venda .price-value   { color: #0d9488; }
+    .price-anterior .price-value { color: #94a3b8; font-size: 1.2rem; }
+    .price-diff { font-size: 0.7rem; margin-top: 3px; }
+    .price-diff.up   { color: #ef4444; }
+    .price-diff.down { color: #10b981; }
+
+    /* Faixa de Markup */
+    .markup-bar {
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-top: 1px solid #f1f5f9;
+    }
+    .markup-label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #64748b;
+    }
+    .markup-value {
+      font-size: 1.3rem;
+      font-weight: 700;
+    }
+    .markup-value.alto  { color: #10b981; }
+    .markup-value.medio { color: #f59e0b; }
+    .markup-value.baixo { color: #ef4444; }
+    .markup-sub {
+      font-size: 0.7rem;
+      color: #94a3b8;
+      margin-top: 1px;
+      text-align: right;
+    }
+
+    .result-meta {
+      padding: 10px 16px;
+      display: flex;
+      gap: 16px;
+      border-top: 1px solid #f1f5f9;
+    }
+    .meta-item { font-size: 0.75rem; color: #64748b; }
+    .meta-item span { color: #1e293b; font-weight: 500; }
+
+    .not-found-msg {
+      padding: 20px 16px;
+      text-align: center;
+      color: #dc2626;
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+    .not-found-code { font-size: 0.8rem; color: #ef4444; margin-top: 4px; }
+
+    /* SUGESTÕES */
+    .suggestions { display: none; max-height: 300px; overflow-y: auto; }
+    .suggestion-item {
+      padding: 12px 16px;
+      border-bottom: 1px solid #f1f5f9;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .suggestion-item:active { background: #f8fafc; }
+    .suggestion-item:last-child { border-bottom: none; }
+    .sug-name { font-size: 0.875rem; font-weight: 500; color: #1e293b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sug-info { font-size: 0.75rem; color: #64748b; margin-top: 2px; }
+
+    .flash {
+      position: fixed;
+      inset: 0;
+      background: rgba(79,70,229,0.15);
+      pointer-events: none;
+      opacity: 0;
+      z-index: 999;
+      transition: opacity 0.3s;
+    }
+    .flash.show { opacity: 1; }
+
+    #file-input-compras, #file-input-vendas { display: none; }
+  </style>
+</head>
+<body>
+
+<div class="flash" id="flash"></div>
+
+<!-- HEADER -->
+<div class="header">
+  <div>
+    <div class="header-title">Leitor Dutra</div>
+    <div class="header-sub">Consulta de preços offline</div>
+  </div>
+  <div class="badge" id="badge-count">Sem dados</div>
+</div>
+
+<!-- IMPORTAR COMPRAS -->
+<div class="section">
+  <div class="section-title">Planilha de Compras (Linear)</div>
+  <div class="import-area">
+    <button class="btn btn-indigo" onclick="document.getElementById('file-input-compras').click()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      Importar
+    </button>
+    <div class="import-info" id="import-info-compras">
+      <strong>Nenhuma planilha carregada</strong>
+      Preço de compra anterior e atual
+    </div>
+  </div>
+  <input type="file" id="file-input-compras" accept=".xlsx,.xls" onchange="importCompras(this)">
+</div>
+
+<!-- IMPORTAR VENDAS -->
+<div class="section">
+  <div class="section-title">Planilha de Vendas (Linear)</div>
+  <div class="import-area">
+    <button class="btn btn-teal" onclick="document.getElementById('file-input-vendas').click()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      Importar
+    </button>
+    <div class="import-info" id="import-info-vendas">
+      <strong>Nenhuma planilha carregada</strong>
+      Preço de venda atual (habilita Markup)
+    </div>
+  </div>
+  <input type="file" id="file-input-vendas" accept=".xlsx,.xls" onchange="importVendas(this)">
+</div>
+
+<!-- CÂMERA AO VIVO -->
+<div class="section">
+  <div class="section-title">Câmera / Código de Barras</div>
+  <div class="scanner-controls">
+    <button class="btn btn-green" id="btn-camera" onclick="toggleScanner()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+      Escanear Código
+    </button>
+  </div>
+  <p class="scanner-hint" id="scanner-hint">Aponte a câmera para o código de barras — leitura automática</p>
+  <div id="reader"></div>
+</div>
+
+<!-- BUSCA MANUAL -->
+<div class="section">
+  <div class="section-title">Busca por Nome ou Código</div>
+  <div class="search-wrap">
+    <input
+      type="text"
+      class="search-input"
+      id="search-input"
+      placeholder="Digite o nome ou código de barras..."
+      oninput="onSearchInput(this.value)"
+      autocomplete="off"
+      autocorrect="off"
+      spellcheck="false"
+    >
+    <button class="search-clear" id="search-clear" onclick="clearSearch()">✕</button>
+  </div>
+  <div class="suggestions" id="suggestions"></div>
+</div>
+
+<!-- RESULTADO -->
+<div class="result-card" id="result-card">
+  <div id="result-content"></div>
+</div>
+
+<script>
+// ─── Estado ───────────────────────────────────────────────────────────────────
+let produtos  = [];   // [{codigo, barcode, nome, anterior, compra, um}]
+let vendasMap = {};   // { barcode: venda }
+let html5QrCode = null;
+let scannerAtivo = false;
+
+// ─── Persistência ─────────────────────────────────────────────────────────────
+function salvarCompras(data) {
+  try { localStorage.setItem('leitor_dutra_v2', JSON.stringify(data)); } catch(e) {}
+}
+function salvarVendas(data) {
+  try { localStorage.setItem('leitor_dutra_vendas', JSON.stringify(data)); } catch(e) {}
+}
+function carregarTudo() {
+  try {
+    const c = localStorage.getItem('leitor_dutra_v2');
+    if (c) {
+      const d = JSON.parse(c);
+      produtos = d.produtos || [];
+      atualizarUICompras(d.nome, d.data);
+    }
+  } catch(e) {}
+  try {
+    const v = localStorage.getItem('leitor_dutra_vendas');
+    if (v) {
+      const d = JSON.parse(v);
+      vendasMap = d.map || {};
+      atualizarUIVendas(d.nome, d.data, d.total);
+    }
+  } catch(e) {}
+  atualizarBadge();
+}
+
+window.addEventListener('load', carregarTudo);
+
+// ─── Importar Compras ─────────────────────────────────────────────────────────
+function importCompras(input) {
+  const file = input.files[0];
+  if (!file) return;
+  lerXLSX(file, (rows, headers) => {
+    const col = makeColFinder(headers);
+    const colBarcode  = col(['cod. barra','cód. barra','cod barra','barras','ean','barcode']);
+    const colNome     = col(['descri','nome','produto']);
+    const colAnterior = col(['anterior']);
+    const colCompra   = col(['compra']);
+    const colCodigo   = col(['código','codigo','cod.','cod ']);
+    const colUM       = col(['um','unid']);
+
+    if (!colBarcode || !colNome) {
+      alert('Não encontrei as colunas obrigatórias (Cód. Barra e Descrição).\n\nColunas encontradas:\n' + headers.join(', '));
+      return;
+    }
+
+    produtos = rows
+      .map(r => ({
+        codigo:   String(r[colCodigo]  || '').trim(),
+        barcode:  normBarcode(String(r[colBarcode] || '')),
+        nome:     normNome(String(r[colNome] || '')),
+        anterior: parsePreco(r[colAnterior]),
+        compra:   parsePreco(r[colCompra]),
+        um:       String(r[colUM] || '').trim(),
+      }))
+      .filter(p => p.barcode && p.nome);
+
+    const agora = new Date().toLocaleString('pt-BR');
+    salvarCompras({ produtos, nome: file.name, data: agora });
+    atualizarUICompras(file.name, agora);
+    atualizarBadge();
+    input.value = '';
+    flash();
+  });
+}
+
+// ─── Importar Vendas ──────────────────────────────────────────────────────────
+function importVendas(input) {
+  const file = input.files[0];
+  if (!file) return;
+  lerXLSX(file, (rows, headers) => {
+    const col = makeColFinder(headers);
+    const colBarcode = col(['cod. barra','cód. barra','cod barra','barras','ean','barcode']);
+    const colVenda   = col(['venda','vlr. vend','vlr vend','preco vend','prec. vend','p. venda','preço venda','preco de venda','prec venda']);
+
+    if (!colBarcode) {
+      alert('Não encontrei a coluna de código de barras.\n\nColunas encontradas:\n' + headers.join(', '));
+      return;
+    }
+    if (!colVenda) {
+      alert('Não encontrei a coluna de preço de venda.\n\nColunas encontradas:\n' + headers.join(', ') + '\n\nProcuro por: Venda, Vlr. Vend, Preço Venda ou similar.');
+      return;
+    }
+
+    vendasMap = {};
+    let total = 0;
+    rows.forEach(r => {
+      const bc = normBarcode(String(r[colBarcode] || ''));
+      const v  = parsePreco(r[colVenda]);
+      if (bc && v !== null) {
+        vendasMap[bc] = v;
+        total++;
+      }
+    });
+
+    const agora = new Date().toLocaleString('pt-BR');
+    salvarVendas({ map: vendasMap, nome: file.name, data: agora, total });
+    atualizarUIVendas(file.name, agora, total);
+    input.value = '';
+    flash();
+  });
+}
+
+// ─── Helpers de importação ────────────────────────────────────────────────────
+function lerXLSX(file, callback) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const wb = XLSX.read(e.target.result, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+      if (!rows.length) { alert('Planilha vazia ou sem dados.'); return; }
+      callback(rows, Object.keys(rows[0]));
+    } catch(err) {
+      alert('Erro ao ler o arquivo:\n' + err.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function makeColFinder(headers) {
+  return (termos) => headers.find(h => termos.some(t => norm(h).includes(norm(t)))) || null;
+}
+
+function atualizarUICompras(nomeArq, data) {
+  document.getElementById('import-info-compras').className = 'import-info import-ok';
+  document.getElementById('import-info-compras').innerHTML =
+    `<strong>${nomeArq}</strong>Importado em: ${data}`;
+}
+function atualizarUIVendas(nomeArq, data, total) {
+  document.getElementById('import-info-vendas').className = 'import-info import-ok';
+  document.getElementById('import-info-vendas').innerHTML =
+    `<strong>${nomeArq}</strong>${total} preços de venda — ${data}`;
+}
+function atualizarBadge() {
+  document.getElementById('badge-count').textContent =
+    produtos.length ? produtos.length + ' produtos' : 'Sem dados';
+}
+
+// ─── Câmera ao vivo ───────────────────────────────────────────────────────────
+async function toggleScanner() {
+  if (scannerAtivo) { await pararScanner(); return; }
+
+  if (!produtos.length) { alert('Importe a planilha de compras primeiro!'); return; }
+
+  const btn  = document.getElementById('btn-camera');
+  const hint = document.getElementById('scanner-hint');
+
+  btn.disabled = true;
+  btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/></svg> Abrindo...`;
+
+  try {
+    html5QrCode = new Html5Qrcode('reader');
+    await html5QrCode.start(
+      { facingMode: 'environment' },
+      { fps: 10, qrbox: { width: 260, height: 120 } },
+      (decodedText) => {
+        const bc = normBarcode(decodedText);
+        if (navigator.vibrate) navigator.vibrate(80);
+        flash();
+        pararScanner();
+        mostrarProdutoPorBarcode(bc);
+        setTimeout(() => {
+          document.getElementById('result-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 200);
+      },
+      null
+    );
+
+    scannerAtivo = true;
+    hint.className = 'scanner-hint ativo';
+    btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> Parar Câmera`;
+    btn.className = 'btn btn-red';
+    btn.disabled = false;
+
+  } catch(err) {
+    html5QrCode = null;
+    btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg> Escanear Código`;
+    btn.className = 'btn btn-green';
+    btn.disabled = false;
+    alert('Não foi possível acessar a câmera.\n\nCertifique-se de que o site está aberto via https:// e que a permissão de câmera foi concedida.');
+  }
+}
+
+async function pararScanner() {
+  if (html5QrCode) {
+    try { await html5QrCode.stop(); } catch(e) {}
+    try { html5QrCode.clear(); } catch(e) {}
+    html5QrCode = null;
+  }
+  scannerAtivo = false;
+  document.getElementById('scanner-hint').className = 'scanner-hint';
+  const btn = document.getElementById('btn-camera');
+  btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg> Escanear Código`;
+  btn.className = 'btn btn-green';
+  btn.disabled = false;
+}
+
+// ─── Busca manual ─────────────────────────────────────────────────────────────
+function onSearchInput(val) {
+  document.getElementById('search-clear').style.display = val ? 'block' : 'none';
+  if (!val.trim()) { document.getElementById('suggestions').style.display = 'none'; return; }
+
+  const byBarcode = produtos.filter(p => p.barcode === normBarcode(val));
+  if (byBarcode.length === 1) {
+    mostrarResultado(byBarcode[0]);
+    document.getElementById('suggestions').style.display = 'none';
+    return;
+  }
+  const q = norm(val);
+  mostrarSugestoes(produtos.filter(p => norm(p.nome).includes(q)).slice(0, 30));
+}
+
+function mostrarSugestoes(lista) {
+  const el = document.getElementById('suggestions');
+  if (!lista.length) { el.style.display = 'none'; return; }
+  el.innerHTML = lista.map(p =>
+    `<div class="suggestion-item" onclick="selecionarSugestao('${escHtml(p.barcode)}')">
+      <div class="sug-name">${escHtml(p.nome)}</div>
+      <div class="sug-info">
+        Compra: ${fmtPreco(p.compra)} &nbsp;|&nbsp; Anterior: ${fmtPreco(p.anterior)} &nbsp;|&nbsp; ${escHtml(p.barcode)}
+      </div>
+    </div>`
+  ).join('');
+  el.style.display = 'block';
+}
+
+function selecionarSugestao(barcode) {
+  document.getElementById('suggestions').style.display = 'none';
+  document.getElementById('search-input').value = '';
+  document.getElementById('search-clear').style.display = 'none';
+  mostrarProdutoPorBarcode(barcode);
+  document.getElementById('result-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function clearSearch() {
+  document.getElementById('search-input').value = '';
+  document.getElementById('search-clear').style.display = 'none';
+  document.getElementById('suggestions').style.display = 'none';
+}
+
+// ─── Exibir resultado ─────────────────────────────────────────────────────────
+function mostrarProdutoPorBarcode(bc) {
+  const produto = produtos.find(p => p.barcode === bc || p.barcode === normBarcode(bc));
+  produto ? mostrarResultado(produto) : mostrarNaoEncontrado(bc);
+}
+
+function mostrarResultado(p) {
+  const card = document.getElementById('result-card');
+  card.className = 'result-card result-found';
+
+  const venda = vendasMap[p.barcode] ?? null;
+  const temVenda = venda !== null;
+
+  // Variação compra vs anterior
+  let diffCompraHtml = '';
+  if (p.compra !== null && p.anterior !== null && p.anterior !== 0) {
+    const diff = ((p.compra - p.anterior) / p.anterior) * 100;
+    const cls = diff > 0 ? 'up' : 'down';
+    const sinal = diff > 0 ? '▲' : '▼';
+    diffCompraHtml = `<div class="price-diff ${cls}">${sinal} ${Math.abs(diff).toFixed(1)}% vs anterior</div>`;
+  }
+
+  // Markup
+  let markupHtml = '';
+  if (temVenda && p.compra !== null && p.compra > 0) {
+    const mk = ((venda / p.compra) - 1) * 100;
+    const cls = mk >= 30 ? 'alto' : mk >= 15 ? 'medio' : 'baixo';
+    markupHtml = `
+      <div class="markup-bar">
+        <div class="markup-label">Markup (Venda / Compra)</div>
+        <div style="text-align:right">
+          <div class="markup-value ${cls}">${mk.toFixed(1).replace('.', ',')}%</div>
+          <div class="markup-sub">${fmtPreco(p.compra)} → ${fmtPreco(venda)}</div>
+        </div>
+      </div>`;
+  }
+
+  // Grade de preços
+  let pricesHtml;
+  if (temVenda) {
+    pricesHtml = `
+      <div class="result-prices">
+        <div class="price-box price-compra">
+          <div class="price-label">Última Compra</div>
+          <div class="price-value">${fmtPreco(p.compra)}</div>
+          ${diffCompraHtml}
+        </div>
+        <div class="price-box price-venda">
+          <div class="price-label">Venda Atual</div>
+          <div class="price-value">${fmtPreco(venda)}</div>
+        </div>
+      </div>
+      ${markupHtml}`;
+  } else {
+    pricesHtml = `
+      <div class="result-prices">
+        <div class="price-box price-compra">
+          <div class="price-label">Última Compra</div>
+          <div class="price-value">${fmtPreco(p.compra)}</div>
+          ${diffCompraHtml}
+        </div>
+        <div class="price-box price-anterior">
+          <div class="price-label">Anterior</div>
+          <div class="price-value">${fmtPreco(p.anterior)}</div>
+        </div>
+      </div>`;
+  }
+
+  document.getElementById('result-content').innerHTML = `
+    <div class="result-header">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+        Produto encontrado
+      </div>
+      <button class="btn-fechar" onclick="fecharResultado()">✕ Fechar</button>
+    </div>
+    <div class="result-name">${escHtml(p.nome)}</div>
+    ${pricesHtml}
+    <div class="result-meta">
+      <div class="meta-item">Cód. Barra: <span>${escHtml(p.barcode)}</span></div>
+      ${p.codigo ? `<div class="meta-item">Cód. Interno: <span>${escHtml(p.codigo)}</span></div>` : ''}
+      ${p.um ? `<div class="meta-item">UM: <span>${escHtml(p.um)}</span></div>` : ''}
+    </div>
+  `;
+  card.style.display = 'block';
+}
+
+function mostrarNaoEncontrado(bc) {
+  const card = document.getElementById('result-card');
+  card.className = 'result-card result-not-found';
+  document.getElementById('result-content').innerHTML = `
+    <div class="not-found-msg">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-bottom:8px;display:block;margin-left:auto;margin-right:auto;color:#ef4444">
+        <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+      </svg>
+      Produto não encontrado
+      <div class="not-found-code">${escHtml(bc)}</div>
+    </div>
+  `;
+  card.style.display = 'block';
+}
+
+// ─── Utilitários ──────────────────────────────────────────────────────────────
+function norm(s) {
+  return s.toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9 .]/g, '').trim();
+}
+function normBarcode(s) {
+  return s.replace(/\D/g, '').replace(/^0+(?=\d{8,})/, '') || s.trim();
+}
+function normNome(s) { return s.replace(/\s+/g, ' ').trim(); }
+function parsePreco(v) {
+  if (v === '' || v === null || v === undefined) return null;
+  const n = parseFloat(String(v).replace(',', '.'));
+  return isNaN(n) ? null : n;
+}
+function fmtPreco(v) {
+  if (v === null || v === undefined) return '—';
+  return 'R$ ' + v.toFixed(2).replace('.', ',');
+}
+function flash() {
+  const el = document.getElementById('flash');
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 300);
+}
+function fecharResultado() {
+  document.getElementById('result-card').style.display = 'none';
+}
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+</script>
+</body>
+</html>
