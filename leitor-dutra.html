@@ -9,6 +9,13 @@
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="logo.webp">
   <meta name="theme-color" content="#4f46e5">
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/leitor-dutra/service-worker.js');
+      });
+    }
+  </script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
