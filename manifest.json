@@ -1,0 +1,17 @@
+{
+  "name": "Leitor Dutra",
+  "short_name": "Leitor Dutra",
+  "description": "Consulta de preços offline - Supermercado Dutra",
+  "start_url": "/leitor-dutra/leitor-dutra.html",
+  "display": "standalone",
+  "background_color": "#f1f5f9",
+  "theme_color": "#4f46e5",
+  "icons": [
+    {
+      "src": "logo.webp",
+      "sizes": "any",
+      "type": "image/webp",
+      "purpose": "any maskable"
+    }
+  ]
+}

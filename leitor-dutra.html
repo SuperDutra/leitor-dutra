@@ -6,6 +6,9 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <title>Leitor Dutra</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="logo.webp">
+  <meta name="theme-color" content="#4f46e5">
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -300,9 +303,12 @@
 
 <!-- HEADER -->
 <div class="header">
-  <div>
-    <div class="header-title">Leitor Dutra</div>
-    <div class="header-sub">Consulta de preços offline</div>
+  <div style="display:flex;align-items:center;gap:10px;">
+    <img src="logo.webp" alt="Logo" style="height:38px;width:38px;border-radius:8px;object-fit:cover;">
+    <div>
+      <div class="header-title">Leitor Dutra</div>
+      <div class="header-sub">Consulta de preços offline</div>
+    </div>
   </div>
   <div class="badge" id="badge-count">Sem dados</div>
 </div>
