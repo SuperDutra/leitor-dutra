@@ -465,6 +465,7 @@
 // ─── Estado ───────────────────────────────────────────────────────────────────
 let produtos  = [];   // [{codigo, barcode, nome, anterior, compra, um}]
 let vendasMap = {};   // { barcode: venda }
+let vendasDataImport = null;  // data da última importação de vendas
 let html5QrCode = null;
 let scannerAtivo = false;
 
@@ -489,6 +490,7 @@ function carregarTudo() {
     if (v) {
       const d = JSON.parse(v);
       vendasMap = d.map || {};
+      vendasDataImport = d.data || null;
       atualizarUIVendas(d.nome, d.data, d.total);
     }
   } catch(e) {}
@@ -565,6 +567,7 @@ function importVendas(input) {
     });
 
     const agora = new Date().toLocaleString('pt-BR');
+    vendasDataImport = agora;
     salvarVendas({ map: vendasMap, nome: file.name, data: agora, total });
     atualizarUIVendas(file.name, agora, total);
     input.value = '';
@@ -748,36 +751,26 @@ function mostrarResultado(p) {
       </div>`;
   }
 
-  // Grade de preços
-  let pricesHtml;
-  if (temVenda) {
-    pricesHtml = `
-      <div class="result-prices">
-        <div class="price-box price-compra">
-          <div class="price-label">Última Compra</div>
-          <div class="price-value">${fmtPreco(p.compra)}</div>
-          ${diffCompraHtml}
-        </div>
-        <div class="price-box price-venda">
-          <div class="price-label">Venda Atual</div>
-          <div class="price-value">${fmtPreco(venda)}</div>
-        </div>
+  // Data da última importação de vendas
+  const vendaDataHtml = vendasDataImport
+    ? `<div class="price-diff" style="color:#94a3b8">${vendasDataImport}</div>`
+    : `<div class="price-diff" style="color:#cbd5e1">Planilha não carregada</div>`;
+
+  // Grade de preços — Venda Atual sempre visível
+  const pricesHtml = `
+    <div class="result-prices">
+      <div class="price-box price-compra">
+        <div class="price-label">Última Compra</div>
+        <div class="price-value">${fmtPreco(p.compra)}</div>
+        ${diffCompraHtml}
       </div>
-      ${markupHtml}`;
-  } else {
-    pricesHtml = `
-      <div class="result-prices">
-        <div class="price-box price-compra">
-          <div class="price-label">Última Compra</div>
-          <div class="price-value">${fmtPreco(p.compra)}</div>
-          ${diffCompraHtml}
-        </div>
-        <div class="price-box price-anterior">
-          <div class="price-label">Anterior</div>
-          <div class="price-value">${fmtPreco(p.anterior)}</div>
-        </div>
-      </div>`;
-  }
+      <div class="price-box price-venda">
+        <div class="price-label">Venda Atual</div>
+        <div class="price-value">${fmtPreco(venda)}</div>
+        ${vendaDataHtml}
+      </div>
+    </div>
+    ${markupHtml}`;
 
   document.getElementById('result-content').innerHTML = `
     <div class="result-header">
@@ -801,6 +794,7 @@ function mostrarResultado(p) {
     </div>
     <div class="result-meta">
       <div class="meta-item">Cód. Barra: <span>${escHtml(p.barcode)}</span></div>
+      ${p.anterior !== null ? `<div class="meta-item">Anterior: <span>${fmtPreco(p.anterior)}</span></div>` : ''}
       ${p.codigo ? `<div class="meta-item">Cód. Interno: <span>${escHtml(p.codigo)}</span></div>` : ''}
       ${p.um ? `<div class="meta-item">UM: <span>${escHtml(p.um)}</span></div>` : ''}
     </div>
