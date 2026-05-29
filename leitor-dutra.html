@@ -426,6 +426,27 @@
     .hist-arrow.open { transform: rotate(180deg); }
     .hist-detail { display: none; padding: 0 16px 14px; }
     .hist-detail.open { display: block; }
+
+    /* Cards de resultado enriquecido */
+    .produto-card { padding: 12px 16px; border-bottom: 1px solid #f1f5f9; }
+    .produto-card:last-child { border-bottom: none; }
+    .produto-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+    .produto-desc { flex: 1; min-width: 0; }
+    .produto-nome { font-size: 0.875rem; font-weight: 600; color: #1e293b; line-height: 1.3; }
+    .produto-marca { font-size: 0.75rem; color: #64748b; margin-top: 2px; }
+    .produto-precos { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+    .pchip { font-size: 0.72rem; font-weight: 600; padding: 3px 8px; border-radius: 12px; }
+    .pchip-etiq   { background: #fffbeb; color: #d97706; }
+    .pchip-compra { background: #eff6ff; color: #2563eb; }
+    .pchip-venda  { background: #f0fdf4; color: #16a34a; }
+    .pchip-mk-alto  { background: #f0fdf4; color: #16a34a; }
+    .pchip-mk-medio { background: #fffbeb; color: #d97706; }
+    .pchip-mk-baixo { background: #fef2f2; color: #dc2626; }
+    .pchip-na     { background: #f1f5f9; color: #94a3b8; }
+    .export-bar   { display: flex; gap: 8px; padding: 12px 16px; border-top: 2px solid #f1f5f9; }
+    .btn-export   { flex: 1; justify-content: center; font-size: 0.82rem; padding: 10px 12px; }
+    .btn-wa       { background: #25d366; color: white; }
+    .btn-wa:hover { background: #1ebe5d; }
   </style>
 </head>
 <body>
@@ -1100,7 +1121,7 @@ async function confirmarAnalise() {
           role: 'user',
           content: [
             { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: _fotoBase64 } },
-            { type: 'text', text: 'Analise esta foto de uma prateleira de supermercado. Liste cada produto visível e quantas unidades aparecem na foto. Retorne APENAS um JSON válido, sem texto adicional, no seguinte formato exato: {"produtos": [{"nome": "nome do produto", "quantidade": N}]}' }
+            { type: 'text', text: 'Analise esta foto de uma prateleira de supermercado. Para cada produto visível extraia: nome completo, marca, quantidade de unidades visíveis, e preço da etiqueta se aparecer na foto. Retorne APENAS um JSON válido, sem texto adicional, neste formato exato: {"produtos": [{"nome": "nome completo do produto", "marca": "marca", "quantidade": N, "preco_etiqueta": "R$ X,XX ou null se não visível"}]}' }
           ]
         }]
       })
@@ -1140,17 +1161,133 @@ async function confirmarAnalise() {
   }
 }
 
+let _resultadoAtual = null;
+
+function buscarProdutoNaLista(nome, marca) {
+  if (!produtos.length) return null;
+  const q = norm((nome || '') + ' ' + (marca || ''));
+  const palavras = q.split(' ').filter(w => w.length > 2);
+  if (!palavras.length) return null;
+  let melhor = null, melhorScore = 0;
+  produtos.forEach(p => {
+    const pn = norm(p.nome);
+    const matches = palavras.filter(w => pn.includes(w)).length;
+    const score = matches / palavras.length;
+    if (score > melhorScore) { melhorScore = score; melhor = p; }
+  });
+  return melhorScore >= 0.5 ? melhor : null;
+}
+
 function mostrarResultadoContagem(resultado) {
+  // Enriquece cada produto com dados da planilha
+  resultado.produtos.forEach(p => { p._match = buscarProdutoNaLista(p.nome, p.marca); });
+  _resultadoAtual = resultado;
+
   const total = resultado.produtos.reduce((s, p) => s + (p.quantidade || 0), 0);
-  const rows = resultado.produtos
+  const cards = resultado.produtos
     .sort((a, b) => b.quantidade - a.quantidade)
-    .map(p => `<div class="analise-row"><div class="analise-nome">${escHtml(p.nome)}</div><div class="analise-qtd">${p.quantidade}</div></div>`)
-    .join('');
+    .map(p => {
+      const m = p._match;
+      const venda = m ? (vendasMap[m.barcode] ?? null) : null;
+
+      let chips = '';
+      if (p.preco_etiqueta && p.preco_etiqueta !== 'null')
+        chips += `<span class="pchip pchip-etiq">Etiq: ${escHtml(p.preco_etiqueta)}</span>`;
+      if (m) {
+        if (m.compra !== null) chips += `<span class="pchip pchip-compra">Compra: ${fmtPreco(m.compra)}</span>`;
+        if (venda !== null)    chips += `<span class="pchip pchip-venda">Venda: ${fmtPreco(venda)}</span>`;
+        if (m.compra > 0 && venda !== null) {
+          const mk = ((venda / m.compra) - 1) * 100;
+          const cls = mk >= 30 ? 'mk-alto' : mk >= 15 ? 'mk-medio' : 'mk-baixo';
+          chips += `<span class="pchip pchip-${cls}">Markup: ${mk.toFixed(1).replace('.', ',')}%</span>`;
+        }
+      } else if (produtos.length) {
+        chips += `<span class="pchip pchip-na">Não encontrado na planilha</span>`;
+      }
+
+      return `
+        <div class="produto-card">
+          <div class="produto-top">
+            <div class="produto-desc">
+              <div class="produto-nome">${escHtml(p.nome)}</div>
+              ${p.marca ? `<div class="produto-marca">${escHtml(p.marca)}</div>` : ''}
+            </div>
+            <div class="analise-qtd">${p.quantidade}</div>
+          </div>
+          ${chips ? `<div class="produto-precos">${chips}</div>` : ''}
+        </div>`;
+    }).join('');
+
   document.getElementById('analise-resultado').innerHTML = `
     <div class="analise-header">
-      <span>${resultado.produtos.length} produto(s) identificado(s)</span>
+      <span>${resultado.produtos.length} produto(s)</span>
       <span>${total} unidade(s)</span>
-    </div>${rows}`;
+    </div>
+    ${cards}
+    <div class="export-bar">
+      <button class="btn btn-indigo btn-export" onclick="exportarExcel(_resultadoAtual)">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
+        Excel
+      </button>
+      <button class="btn btn-wa btn-export" onclick="compartilharWhatsApp(_resultadoAtual)">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        WhatsApp
+      </button>
+    </div>`;
+}
+
+function gerarLinhasExcel(resultado) {
+  return resultado.produtos
+    .sort((a, b) => b.quantidade - a.quantidade)
+    .map(p => {
+      const m = p._match;
+      const venda = m ? (vendasMap[m.barcode] ?? null) : null;
+      const mk = (m && m.compra > 0 && venda !== null)
+        ? ((venda / m.compra) - 1) * 100 : null;
+      return {
+        'Produto':         p.nome || '',
+        'Marca':           p.marca || '',
+        'Qtd':             p.quantidade || 0,
+        'Preço Etiqueta':  (p.preco_etiqueta && p.preco_etiqueta !== 'null') ? p.preco_etiqueta : '',
+        'Preço Compra':    m && m.compra !== null ? m.compra : '',
+        'Preço Venda':     venda !== null ? venda : '',
+        'Markup %':        mk !== null ? parseFloat(mk.toFixed(2)) : '',
+        'Cód. Barras':     m ? m.barcode : '',
+      };
+    });
+}
+
+function exportarExcel(resultado) {
+  if (!resultado) return;
+  const data = new Date().toLocaleDateString('pt-BR').replace(/\//g, '-');
+  const linhas = gerarLinhasExcel(resultado);
+  const ws = XLSX.utils.json_to_sheet(linhas);
+  ws['!cols'] = [{ wch: 35 }, { wch: 18 }, { wch: 6 }, { wch: 14 }, { wch: 13 }, { wch: 12 }, { wch: 10 }, { wch: 16 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Contagem');
+  XLSX.writeFile(wb, `contagem_prateleira_${data}.xlsx`);
+}
+
+async function compartilharWhatsApp(resultado) {
+  if (!resultado) return;
+  const data = new Date().toLocaleDateString('pt-BR').replace(/\//g, '-');
+  const linhas = gerarLinhasExcel(resultado);
+  const ws = XLSX.utils.json_to_sheet(linhas);
+  ws['!cols'] = [{ wch: 35 }, { wch: 18 }, { wch: 6 }, { wch: 14 }, { wch: 13 }, { wch: 12 }, { wch: 10 }, { wch: 16 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Contagem');
+  const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const file = new File([blob], `contagem_prateleira_${data}.xlsx`, { type: blob.type });
+
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: 'Contagem de Prateleira', text: `Contagem ${data}` });
+      return;
+    } catch(e) { /* usuário cancelou, faz download */ }
+  }
+  // Fallback: baixar o arquivo
+  exportarExcel(resultado);
 }
 
 function salvarHistoricoContagem(item) {
@@ -1162,9 +1299,11 @@ function salvarHistoricoContagem(item) {
   renderHistorico();
 }
 
+let historico = [];
+
 function renderHistorico() {
-  let hist = [];
-  try { hist = JSON.parse(localStorage.getItem('leitor_dutra_contagens') || '[]'); } catch(e) {}
+  try { historico = JSON.parse(localStorage.getItem('leitor_dutra_contagens') || '[]'); } catch(e) { historico = []; }
+  const hist = historico;
 
   const sec  = document.getElementById('section-historico');
   const lista = document.getElementById('historico-lista');
@@ -1176,7 +1315,15 @@ function renderHistorico() {
     const total = item.resultado.produtos.reduce((s, p) => s + (p.quantidade || 0), 0);
     const detailRows = item.resultado.produtos
       .sort((a, b) => b.quantidade - a.quantidade)
-      .map(p => `<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f8fafc;font-size:0.82rem;"><span style="color:#1e293b;">${escHtml(p.nome)}</span><span style="font-weight:700;color:#4f46e5;">${p.quantidade}</span></div>`)
+      .map(p => `
+        <div style="padding:7px 0;border-bottom:1px solid #f8fafc;">
+          <div style="display:flex;justify-content:space-between;font-size:0.82rem;">
+            <span style="color:#1e293b;font-weight:600;">${escHtml(p.nome)}</span>
+            <span style="font-weight:700;color:#4f46e5;flex-shrink:0;margin-left:8px;">${p.quantidade}</span>
+          </div>
+          ${p.marca ? `<div style="font-size:0.72rem;color:#94a3b8;">${escHtml(p.marca)}</div>` : ''}
+          ${(p.preco_etiqueta && p.preco_etiqueta !== 'null') ? `<div style="font-size:0.72rem;color:#d97706;margin-top:2px;">Etiqueta: ${escHtml(p.preco_etiqueta)}</div>` : ''}
+        </div>`)
       .join('');
     return `
       <div class="hist-item">
@@ -1190,6 +1337,16 @@ function renderHistorico() {
         <div id="hist-detail-${i}" class="hist-detail">
           <img src="${item.foto}" style="width:100%;border-radius:8px;max-height:200px;object-fit:contain;background:#f1f5f9;margin-bottom:10px;">
           ${detailRows}
+          <div style="display:flex;gap:8px;margin-top:10px;">
+            <button class="btn btn-indigo btn-export" style="font-size:0.78rem;padding:8px 12px;" onclick="exportarExcel(historico[${i}].resultado)">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              Excel
+            </button>
+            <button class="btn btn-wa btn-export" style="font-size:0.78rem;padding:8px 12px;" onclick="compartilharWhatsApp(historico[${i}].resultado)">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+              WhatsApp
+            </button>
+          </div>
         </div>
       </div>`;
   }).join('');
