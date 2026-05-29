@@ -384,8 +384,19 @@
     .of-chip.mk-medio { background: #fffbeb; color: #d97706; }
     .of-chip.mk-baixo { background: #fef2f2; color: #dc2626; }
 
+    /* Seções de IA */
+    .section-ia { border-left: 3px solid #4f46e5; }
+    .ia-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+    .ia-dot.ok  { background: #10b981; }
+    .ia-dot.nok { background: #ef4444; }
+
     /* Contagem de Prateleira */
     .prateleira-btn { width: 100%; justify-content: center; font-size: 0.95rem; padding: 14px; }
+    .foto-hint { font-size: 0.75rem; color: #94a3b8; margin-top: 8px; text-align: center; }
+    .foto-acoes { display: flex; gap: 8px; margin-top: 10px; }
+    .btn-analisar { flex: 1; justify-content: center; }
+    .btn-retirar { background: #f1f5f9; color: #64748b; border: none; }
+    .btn-retirar:hover { background: #e2e8f0; }
     .analise-header {
       background: #4f46e5; color: white;
       padding: 10px 16px;
@@ -494,9 +505,12 @@
 </div>
 
 <!-- CONFIGURAÇÃO IA -->
-<div class="section">
+<div class="section section-ia">
   <div class="section-title" style="display:flex;justify-content:space-between;align-items:center;padding-bottom:10px;">
-    <span>Configuração IA</span>
+    <div style="display:flex;align-items:center;gap:7px;">
+      <span id="ia-dot" class="ia-dot nok"></span>
+      <span>Configuração IA</span>
+    </div>
     <button onclick="toggleConfigIA()" id="btn-config-ia" style="background:none;border:none;cursor:pointer;font-size:0.75rem;color:#64748b;font-weight:600;-webkit-tap-highlight-color:transparent;">Mostrar ▼</button>
   </div>
   <div id="config-ia-body" style="display:none;padding:0 16px 14px;">
@@ -514,18 +528,29 @@
 </div>
 
 <!-- CONTAGEM DE PRATELEIRA -->
-<div class="section">
+<div class="section section-ia">
   <div class="section-title">Contagem de Prateleira</div>
-  <div style="padding:14px 16px;">
+  <div style="padding:14px 16px 10px;">
     <input type="file" id="foto-input" accept="image/*" capture="environment"
-           onchange="analisarFoto(this)" style="display:none;">
-    <button class="btn btn-indigo prateleira-btn" onclick="iniciarFoto()">
+           onchange="onFotoSelecionada(this)" style="display:none;">
+    <button class="btn btn-indigo prateleira-btn" id="btn-fotografar" onclick="iniciarFoto()">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
       Fotografar Prateleira
     </button>
+    <p class="foto-hint">Aponte para a prateleira e tire uma foto clara</p>
   </div>
-  <div id="foto-preview" style="display:none;padding:0 16px 10px;">
-    <img id="foto-img" style="width:100%;border-radius:10px;max-height:250px;object-fit:contain;background:#f1f5f9;">
+  <div id="foto-preview" style="display:none;padding:0 16px 14px;">
+    <img id="foto-img" style="width:100%;border-radius:10px;max-height:260px;object-fit:contain;background:#f1f5f9;">
+    <div class="foto-acoes" id="foto-acoes">
+      <button class="btn btn-indigo btn-analisar" onclick="confirmarAnalise()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/><path d="M11 8v6M8 11h6"/></svg>
+        Analisar com IA
+      </button>
+      <button class="btn btn-retirar" onclick="iniciarFoto()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        Tirar outra
+      </button>
+    </div>
   </div>
   <div id="analise-loading" style="display:none;padding:16px;text-align:center;">
     <div style="color:#4f46e5;font-weight:600;font-size:0.9rem;">Analisando imagem...</div>
@@ -994,6 +1019,8 @@ function mostrarStatusApiKey(msg, cor) {
   const el = document.getElementById('api-key-status');
   el.textContent = msg;
   el.style.color = cor;
+  const dot = document.getElementById('ia-dot');
+  if (dot) dot.className = 'ia-dot ' + (cor === '#10b981' ? 'ok' : 'nok');
 }
 
 function iniciarFoto() {
@@ -1024,77 +1051,93 @@ function resizeImagem(dataUrl, maxPx, qualidade) {
   });
 }
 
-async function analisarFoto(input) {
+let _fotoDataUrl  = null;
+let _fotoBase64   = null;
+
+function onFotoSelecionada(input) {
   const file = input.files[0];
   if (!file) return;
   input.value = '';
 
-  const apiKey = localStorage.getItem('leitor_dutra_api_key');
-  if (!apiKey) return;
-
   const fileReader = new FileReader();
   fileReader.onload = async (e) => {
     const dataUrl = await resizeImagem(e.target.result, 1600, 0.85);
-    const base64Data = dataUrl.split(',')[1];
+    _fotoDataUrl = dataUrl;
+    _fotoBase64  = dataUrl.split(',')[1];
 
     document.getElementById('foto-img').src = dataUrl;
     document.getElementById('foto-preview').style.display = 'block';
-    document.getElementById('analise-loading').style.display = 'block';
+    document.getElementById('foto-acoes').style.display = 'flex';
+    document.getElementById('analise-loading').style.display = 'none';
     document.getElementById('analise-resultado').innerHTML = '';
-
-    try {
-      const resp = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-use': 'true'
-        },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-6',
-          max_tokens: 1024,
-          messages: [{
-            role: 'user',
-            content: [
-              { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64Data } },
-              { type: 'text', text: 'Analise esta foto de uma prateleira de supermercado. Liste cada produto visível e quantas unidades aparecem na foto. Retorne APENAS um JSON válido, sem texto adicional, no seguinte formato exato: {"produtos": [{"nome": "nome do produto", "quantidade": N}]}' }
-            ]
-          }]
-        })
-      });
-
-      if (!resp.ok) {
-        const err = await resp.json().catch(() => ({}));
-        throw new Error(err.error?.message || `Erro HTTP ${resp.status}`);
-      }
-
-      const data = await resp.json();
-      const text = data.content[0].text.trim();
-
-      let resultado;
-      try {
-        const jsonMatch = text.match(/\{[\s\S]*\}/);
-        resultado = JSON.parse(jsonMatch ? jsonMatch[0] : text);
-        if (!Array.isArray(resultado.produtos)) throw new Error();
-      } catch(e) {
-        throw new Error('Resposta inválida da IA. Tente novamente.');
-      }
-
-      document.getElementById('analise-loading').style.display = 'none';
-      mostrarResultadoContagem(resultado);
-      salvarHistoricoContagem({ data: new Date().toLocaleString('pt-BR'), foto: dataUrl, resultado });
-
-    } catch(err) {
-      document.getElementById('analise-loading').style.display = 'none';
-      document.getElementById('analise-resultado').innerHTML = `
-        <div style="padding:14px 16px;color:#dc2626;font-size:0.875rem;display:flex;align-items:center;gap:8px;">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-          ${escHtml(err.message)}
-        </div>`;
-    }
+    document.getElementById('foto-preview').scrollIntoView({ behavior: 'smooth', block: 'center' });
   };
   fileReader.readAsDataURL(file);
+}
+
+async function confirmarAnalise() {
+  if (!_fotoBase64) return;
+  const apiKey = localStorage.getItem('leitor_dutra_api_key');
+  if (!apiKey) return;
+
+  document.getElementById('foto-acoes').style.display = 'none';
+  document.getElementById('analise-loading').style.display = 'block';
+  document.getElementById('analise-resultado').innerHTML = '';
+
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-use': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1024,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: _fotoBase64 } },
+            { type: 'text', text: 'Analise esta foto de uma prateleira de supermercado. Liste cada produto visível e quantas unidades aparecem na foto. Retorne APENAS um JSON válido, sem texto adicional, no seguinte formato exato: {"produtos": [{"nome": "nome do produto", "quantidade": N}]}' }
+          ]
+        }]
+      })
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.error?.message || `Erro HTTP ${resp.status}`);
+    }
+
+    const data = await resp.json();
+    const text = data.content[0].text.trim();
+
+    let resultado;
+    try {
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      resultado = JSON.parse(jsonMatch ? jsonMatch[0] : text);
+      if (!Array.isArray(resultado.produtos)) throw new Error();
+    } catch(e) {
+      throw new Error('Resposta inválida da IA. Tente novamente.');
+    }
+
+    document.getElementById('analise-loading').style.display = 'none';
+    mostrarResultadoContagem(resultado);
+    salvarHistoricoContagem({ data: new Date().toLocaleString('pt-BR'), foto: _fotoDataUrl, resultado });
+    _fotoDataUrl = null;
+    _fotoBase64  = null;
+
+  } catch(err) {
+    document.getElementById('analise-loading').style.display = 'none';
+    document.getElementById('foto-acoes').style.display = 'flex';
+    document.getElementById('analise-resultado').innerHTML = `
+      <div style="padding:14px 16px;color:#dc2626;font-size:0.875rem;display:flex;align-items:center;gap:8px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        ${escHtml(err.message)}
+      </div>`;
+  }
 }
 
 function mostrarResultadoContagem(resultado) {
