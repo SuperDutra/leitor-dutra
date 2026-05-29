@@ -1,4 +1,4 @@
-const CACHE = 'leitor-dutra-v2';
+const CACHE = 'leitor-dutra-v3';
 
 const PRE_CACHE = [
   '/leitor-dutra/leitor-dutra.html',
