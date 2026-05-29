@@ -1,4 +1,4 @@
-const CACHE = 'leitor-dutra-v3';
+const CACHE = 'leitor-dutra-v4';
 
 const PRE_CACHE = [
   '/leitor-dutra/leitor-dutra.html',
@@ -25,6 +25,10 @@ self.addEventListener('activate', event => {
 });
 
 self.addEventListener('fetch', event => {
+  // Deixa o browser tratar diretamente: não-GET e chamadas externas (ex: API Anthropic)
+  if (event.request.method !== 'GET' || !event.request.url.startsWith(self.location.origin)) {
+    return;
+  }
   event.respondWith(
     caches.match(event.request).then(cached => {
       if (cached) return cached;
