@@ -383,6 +383,38 @@
     .of-chip.mk-alto  { background: #f0fdf4; color: #16a34a; }
     .of-chip.mk-medio { background: #fffbeb; color: #d97706; }
     .of-chip.mk-baixo { background: #fef2f2; color: #dc2626; }
+
+    /* Contagem de Prateleira */
+    .prateleira-btn { width: 100%; justify-content: center; font-size: 0.95rem; padding: 14px; }
+    .analise-header {
+      background: #4f46e5; color: white;
+      padding: 10px 16px;
+      font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .analise-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 10px 16px; border-bottom: 1px solid #f1f5f9;
+    }
+    .analise-row:last-child { border-bottom: none; }
+    .analise-nome { font-size: 0.875rem; color: #1e293b; flex: 1; padding-right: 12px; }
+    .analise-qtd {
+      background: #4f46e5; color: white;
+      border-radius: 20px; padding: 3px 12px;
+      font-size: 0.8rem; font-weight: 700; min-width: 36px; text-align: center; flex-shrink: 0;
+    }
+    .hist-item { border-bottom: 1px solid #f1f5f9; }
+    .hist-item:last-child { border-bottom: none; }
+    .hist-row {
+      padding: 12px 16px; cursor: pointer;
+      display: flex; justify-content: space-between; align-items: center;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .hist-row:active { background: #f8fafc; }
+    .hist-arrow { flex-shrink: 0; transition: transform 0.2s; }
+    .hist-arrow.open { transform: rotate(180deg); }
+    .hist-detail { display: none; padding: 0 16px 14px; }
+    .hist-detail.open { display: block; }
   </style>
 </head>
 <body>
@@ -461,6 +493,53 @@
   <div id="result-content"></div>
 </div>
 
+<!-- CONFIGURAÇÃO IA -->
+<div class="section">
+  <div class="section-title" style="display:flex;justify-content:space-between;align-items:center;padding-bottom:10px;">
+    <span>Configuração IA</span>
+    <button onclick="toggleConfigIA()" id="btn-config-ia" style="background:none;border:none;cursor:pointer;font-size:0.75rem;color:#64748b;font-weight:600;-webkit-tap-highlight-color:transparent;">Mostrar ▼</button>
+  </div>
+  <div id="config-ia-body" style="display:none;padding:0 16px 14px;">
+    <div style="font-size:0.78rem;color:#94a3b8;margin-bottom:10px;line-height:1.5;">
+      Necessário para a função Contagem de Prateleira.<br>A chave fica salva apenas neste dispositivo.
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <input type="password" id="api-key-input" placeholder="sk-ant-..."
+             style="flex:1;padding:10px 12px;border:2px solid #e2e8f0;border-radius:10px;font-size:0.85rem;font-family:inherit;color:#1e293b;outline:none;transition:border-color 0.15s;"
+             onfocus="this.style.borderColor='#4f46e5'" onblur="this.style.borderColor='#e2e8f0'">
+      <button class="btn btn-indigo btn-sm" onclick="salvarApiKey()">Salvar</button>
+    </div>
+    <div id="api-key-status" style="font-size:0.75rem;margin-top:6px;color:#94a3b8;"></div>
+  </div>
+</div>
+
+<!-- CONTAGEM DE PRATELEIRA -->
+<div class="section">
+  <div class="section-title">Contagem de Prateleira</div>
+  <div style="padding:14px 16px;">
+    <input type="file" id="foto-input" accept="image/*" capture="environment"
+           onchange="analisarFoto(this)" style="display:none;">
+    <button class="btn btn-indigo prateleira-btn" onclick="iniciarFoto()">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+      Fotografar Prateleira
+    </button>
+  </div>
+  <div id="foto-preview" style="display:none;padding:0 16px 10px;">
+    <img id="foto-img" style="width:100%;border-radius:10px;max-height:250px;object-fit:contain;background:#f1f5f9;">
+  </div>
+  <div id="analise-loading" style="display:none;padding:16px;text-align:center;">
+    <div style="color:#4f46e5;font-weight:600;font-size:0.9rem;">Analisando imagem...</div>
+    <div style="color:#94a3b8;font-size:0.78rem;margin-top:4px;">Aguarde alguns segundos</div>
+  </div>
+  <div id="analise-resultado"></div>
+</div>
+
+<!-- HISTÓRICO DE CONTAGENS -->
+<div class="section" id="section-historico" style="display:none;">
+  <div class="section-title">Histórico de Contagens</div>
+  <div id="historico-lista"></div>
+</div>
+
 <script>
 // ─── Estado ───────────────────────────────────────────────────────────────────
 let produtos  = [];   // [{codigo, barcode, nome, anterior, compra, um}]
@@ -495,6 +574,8 @@ function carregarTudo() {
     }
   } catch(e) {}
   atualizarBadge();
+  carregarApiKey();
+  renderHistorico();
 }
 
 window.addEventListener('load', carregarTudo);
@@ -882,6 +963,200 @@ function escHtml(s) {
   return String(s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;')
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// ─── Contagem de Prateleira ───────────────────────────────────────────────────
+
+function toggleConfigIA() {
+  const body = document.getElementById('config-ia-body');
+  const btn  = document.getElementById('btn-config-ia');
+  const aberto = body.style.display !== 'none';
+  body.style.display = aberto ? 'none' : 'block';
+  btn.textContent = aberto ? 'Mostrar ▼' : 'Ocultar ▲';
+}
+
+function salvarApiKey() {
+  const val = document.getElementById('api-key-input').value.trim();
+  if (!val) { alert('Digite a chave API.'); return; }
+  localStorage.setItem('leitor_dutra_api_key', val);
+  document.getElementById('api-key-input').value = '';
+  mostrarStatusApiKey('✓ Chave salva com sucesso', '#10b981');
+  document.getElementById('config-ia-body').style.display = 'none';
+  document.getElementById('btn-config-ia').textContent = 'Mostrar ▼';
+}
+
+function carregarApiKey() {
+  if (localStorage.getItem('leitor_dutra_api_key'))
+    mostrarStatusApiKey('✓ Chave configurada', '#10b981');
+}
+
+function mostrarStatusApiKey(msg, cor) {
+  const el = document.getElementById('api-key-status');
+  el.textContent = msg;
+  el.style.color = cor;
+}
+
+function iniciarFoto() {
+  if (!localStorage.getItem('leitor_dutra_api_key')) {
+    alert('Configure a chave API primeiro!\n\nClique em "Configuração IA" acima para inserir a chave.');
+    document.getElementById('config-ia-body').style.display = 'block';
+    document.getElementById('btn-config-ia').textContent = 'Ocultar ▲';
+    return;
+  }
+  document.getElementById('foto-input').click();
+}
+
+function resizeImagem(dataUrl, maxPx, qualidade) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      let w = img.width, h = img.height;
+      if (w > maxPx || h > maxPx) {
+        if (w > h) { h = Math.round(h * maxPx / w); w = maxPx; }
+        else       { w = Math.round(w * maxPx / h); h = maxPx; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/jpeg', qualidade));
+    };
+    img.src = dataUrl;
+  });
+}
+
+async function analisarFoto(input) {
+  const file = input.files[0];
+  if (!file) return;
+  input.value = '';
+
+  const apiKey = localStorage.getItem('leitor_dutra_api_key');
+  if (!apiKey) return;
+
+  const fileReader = new FileReader();
+  fileReader.onload = async (e) => {
+    const dataUrl = await resizeImagem(e.target.result, 1600, 0.85);
+    const base64Data = dataUrl.split(',')[1];
+
+    document.getElementById('foto-img').src = dataUrl;
+    document.getElementById('foto-preview').style.display = 'block';
+    document.getElementById('analise-loading').style.display = 'block';
+    document.getElementById('analise-resultado').innerHTML = '';
+
+    try {
+      const resp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-use': 'true'
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 1024,
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64Data } },
+              { type: 'text', text: 'Analise esta foto de uma prateleira de supermercado. Liste cada produto visível e quantas unidades aparecem na foto. Retorne APENAS um JSON válido, sem texto adicional, no seguinte formato exato: {"produtos": [{"nome": "nome do produto", "quantidade": N}]}' }
+            ]
+          }]
+        })
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.error?.message || `Erro HTTP ${resp.status}`);
+      }
+
+      const data = await resp.json();
+      const text = data.content[0].text.trim();
+
+      let resultado;
+      try {
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        resultado = JSON.parse(jsonMatch ? jsonMatch[0] : text);
+        if (!Array.isArray(resultado.produtos)) throw new Error();
+      } catch(e) {
+        throw new Error('Resposta inválida da IA. Tente novamente.');
+      }
+
+      document.getElementById('analise-loading').style.display = 'none';
+      mostrarResultadoContagem(resultado);
+      salvarHistoricoContagem({ data: new Date().toLocaleString('pt-BR'), foto: dataUrl, resultado });
+
+    } catch(err) {
+      document.getElementById('analise-loading').style.display = 'none';
+      document.getElementById('analise-resultado').innerHTML = `
+        <div style="padding:14px 16px;color:#dc2626;font-size:0.875rem;display:flex;align-items:center;gap:8px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          ${escHtml(err.message)}
+        </div>`;
+    }
+  };
+  fileReader.readAsDataURL(file);
+}
+
+function mostrarResultadoContagem(resultado) {
+  const total = resultado.produtos.reduce((s, p) => s + (p.quantidade || 0), 0);
+  const rows = resultado.produtos
+    .sort((a, b) => b.quantidade - a.quantidade)
+    .map(p => `<div class="analise-row"><div class="analise-nome">${escHtml(p.nome)}</div><div class="analise-qtd">${p.quantidade}</div></div>`)
+    .join('');
+  document.getElementById('analise-resultado').innerHTML = `
+    <div class="analise-header">
+      <span>${resultado.produtos.length} produto(s) identificado(s)</span>
+      <span>${total} unidade(s)</span>
+    </div>${rows}`;
+}
+
+function salvarHistoricoContagem(item) {
+  let hist = [];
+  try { hist = JSON.parse(localStorage.getItem('leitor_dutra_contagens') || '[]'); } catch(e) {}
+  hist.unshift(item);
+  if (hist.length > 20) hist = hist.slice(0, 20);
+  try { localStorage.setItem('leitor_dutra_contagens', JSON.stringify(hist)); } catch(e) {}
+  renderHistorico();
+}
+
+function renderHistorico() {
+  let hist = [];
+  try { hist = JSON.parse(localStorage.getItem('leitor_dutra_contagens') || '[]'); } catch(e) {}
+
+  const sec  = document.getElementById('section-historico');
+  const lista = document.getElementById('historico-lista');
+
+  if (!hist.length) { sec.style.display = 'none'; return; }
+  sec.style.display = 'block';
+
+  lista.innerHTML = hist.map((item, i) => {
+    const total = item.resultado.produtos.reduce((s, p) => s + (p.quantidade || 0), 0);
+    const detailRows = item.resultado.produtos
+      .sort((a, b) => b.quantidade - a.quantidade)
+      .map(p => `<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f8fafc;font-size:0.82rem;"><span style="color:#1e293b;">${escHtml(p.nome)}</span><span style="font-weight:700;color:#4f46e5;">${p.quantidade}</span></div>`)
+      .join('');
+    return `
+      <div class="hist-item">
+        <div class="hist-row" onclick="expandirHistorico(${i})">
+          <div>
+            <div style="font-size:0.85rem;font-weight:600;color:#1e293b;">${escHtml(item.data)}</div>
+            <div style="font-size:0.75rem;color:#64748b;">${item.resultado.produtos.length} tipo(s) · ${total} unidade(s)</div>
+          </div>
+          <svg id="hist-arrow-${i}" class="hist-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+        <div id="hist-detail-${i}" class="hist-detail">
+          <img src="${item.foto}" style="width:100%;border-radius:8px;max-height:200px;object-fit:contain;background:#f1f5f9;margin-bottom:10px;">
+          ${detailRows}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function expandirHistorico(i) {
+  const detail = document.getElementById(`hist-detail-${i}`);
+  const arrow  = document.getElementById(`hist-arrow-${i}`);
+  detail.classList.toggle('open');
+  arrow.classList.toggle('open');
 }
 </script>
 </body>
