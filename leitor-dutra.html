@@ -84,17 +84,46 @@
     .import-info-mini {
       font-size: 0.7rem;
       color: #94a3b8;
+      line-height: 1.3;
+    }
+    .import-info-mini.ok .im-nome { color: #10b981; }
+    .im-nome {
+      display: block;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
-    .import-info-mini.ok { color: #10b981; }
+    .im-data { display: block; color: #94a3b8; font-size: 0.62rem; }
+    .import-col .btn { width: 100%; justify-content: center; }
     .btn-sm {
       padding: 7px 10px;
       font-size: 0.78rem;
       border-radius: 8px;
       gap: 4px;
     }
+
+    /* Toast (mensagem de importação) */
+    .toast {
+      position: fixed;
+      top: 14px;
+      left: 50%;
+      transform: translateX(-50%) translateY(-120%);
+      max-width: 92%;
+      padding: 11px 18px;
+      border-radius: 10px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #fff;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.18);
+      z-index: 9999;
+      opacity: 0;
+      transition: transform 0.28s ease, opacity 0.28s ease;
+      pointer-events: none;
+      text-align: center;
+    }
+    .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+    .toast.ok  { background: #10b981; }
+    .toast.err { background: #ef4444; }
 
     .btn {
       display: inline-flex;
@@ -465,6 +494,9 @@
   <div class="badge" id="badge-count">Sem dados</div>
 </div>
 
+<!-- TOAST (mensagem de importação) -->
+<div id="toast" class="toast"></div>
+
 <!-- IMPORTAR (compacto) -->
 <div class="section">
   <div class="section-title">Planilhas</div>
@@ -593,6 +625,24 @@ let vendasMap = {};   // { barcode: venda }
 let vendasDataImport = null;  // data da última importação de vendas
 let html5QrCode = null;
 let scannerAtivo = false;
+let toastTimer = null;
+
+// ─── Toast (mensagem temporária) ───────────────────────────────────────────────
+function toast(msg, tipo) {
+  const el = document.getElementById('toast');
+  if (!el) return;
+  el.textContent = msg;
+  el.className = 'toast show ' + (tipo === 'err' ? 'err' : 'ok');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.className = 'toast'; }, 3200);
+}
+
+// Extrai "DD/MM HH:MM" de uma data salva (toLocaleString pt-BR) — tolerante a formato
+function formatData(str) {
+  if (!str) return '';
+  const m = String(str).match(/(\d{2}\/\d{2})\/\d{4}[ ,]+(\d{2}:\d{2})/);
+  return m ? m[1] + ' ' + m[2] : str;
+}
 
 // ─── Persistência ─────────────────────────────────────────────────────────────
 function salvarCompras(data) {
@@ -640,7 +690,7 @@ function importCompras(input) {
     const colUM       = col(['um','unid']);
 
     if (!colBarcode || !colNome) {
-      alert('Não encontrei as colunas obrigatórias (Cód. Barra e Descrição).\n\nColunas encontradas:\n' + headers.join(', '));
+      toast('Compras: não encontrei as colunas Cód. Barra e Descrição', 'err');
       return;
     }
 
@@ -661,6 +711,7 @@ function importCompras(input) {
     atualizarBadge();
     input.value = '';
     flash();
+    toast('Compras importado — ' + produtos.length + ' produtos', 'ok');
   });
 }
 
@@ -674,11 +725,11 @@ function importVendas(input) {
     const colVenda   = col(['venda','vlr. vend','vlr vend','preco vend','prec. vend','p. venda','preço venda','preco de venda','prec venda']);
 
     if (!colBarcode) {
-      alert('Não encontrei a coluna de código de barras.\n\nColunas encontradas:\n' + headers.join(', '));
+      toast('Vendas: não encontrei a coluna de código de barras', 'err');
       return;
     }
     if (!colVenda) {
-      alert('Não encontrei a coluna de preço de venda.\n\nColunas encontradas:\n' + headers.join(', ') + '\n\nProcuro por: Venda, Vlr. Vend, Preço Venda ou similar.');
+      toast('Vendas: não encontrei a coluna de preço de venda', 'err');
       return;
     }
 
@@ -699,6 +750,7 @@ function importVendas(input) {
     atualizarUIVendas(file.name, agora, total);
     input.value = '';
     flash();
+    toast('Vendas importado — ' + total + ' itens', 'ok');
   });
 }
 
@@ -710,10 +762,10 @@ function lerXLSX(file, callback) {
       const wb = XLSX.read(e.target.result, { type: 'array' });
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
-      if (!rows.length) { alert('Planilha vazia ou sem dados.'); return; }
+      if (!rows.length) { toast('Planilha vazia ou sem dados', 'err'); return; }
       callback(rows, Object.keys(rows[0]));
     } catch(err) {
-      alert('Erro ao ler o arquivo:\n' + err.message);
+      toast('Erro ao ler o arquivo: ' + err.message, 'err');
     }
   };
   reader.readAsArrayBuffer(file);
@@ -723,15 +775,25 @@ function makeColFinder(headers) {
   return (termos) => headers.find(h => termos.some(t => norm(h).includes(norm(t)))) || null;
 }
 
-function atualizarUICompras(nomeArq, data) {
-  const el = document.getElementById('import-info-compras');
+function montarInfoImport(el, nomeArq, data) {
   el.className = 'import-info-mini ok';
-  el.textContent = '✓ ' + nomeArq;
+  const nome = document.createElement('span');
+  nome.className = 'im-nome';
+  nome.textContent = '✓ ' + nomeArq;
+  el.replaceChildren(nome);
+  const d = formatData(data);
+  if (d) {
+    const dt = document.createElement('span');
+    dt.className = 'im-data';
+    dt.textContent = d;
+    el.appendChild(dt);
+  }
+}
+function atualizarUICompras(nomeArq, data) {
+  montarInfoImport(document.getElementById('import-info-compras'), nomeArq, data);
 }
 function atualizarUIVendas(nomeArq, data, total) {
-  const el = document.getElementById('import-info-vendas');
-  el.className = 'import-info-mini ok';
-  el.textContent = '✓ ' + nomeArq;
+  montarInfoImport(document.getElementById('import-info-vendas'), nomeArq, data);
 }
 function atualizarBadge() {
   document.getElementById('badge-count').textContent =
