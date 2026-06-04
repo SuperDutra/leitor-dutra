@@ -544,6 +544,16 @@
     .btn-export   { flex: 1; justify-content: center; font-size: 0.82rem; padding: 10px 12px; }
     .btn-wa       { background: #25d366; color: white; --btn-base: #1a9c4b; }
     .btn-wa:hover { filter: brightness(1.05); }
+
+    /* Rodapé de versão */
+    .app-version {
+      text-align: center;
+      font-size: 0.65rem;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+      color: #c9b48a;
+      padding: 14px 0 6px;
+    }
 </style>
 </head>
 <body>
@@ -1489,5 +1499,8 @@ function expandirHistorico(i) {
   arrow.classList.toggle('open');
 }
 </script>
+
+<!-- Rodapé: versão (bater o olho p/ saber se o cache atualizou) -->
+<div class="app-version">Leitor Dutra · v9</div>
 </body>
 </html>
