@@ -18,6 +18,7 @@
   </script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <script src="lib/relatorios.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
@@ -415,7 +416,14 @@
     }
     .flash.show { opacity: 1; }
 
-    #file-input-compras, #file-input-vendas { display: none; }
+    #file-input-import { display: none; }
+    .import-checklist { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+    .import-item { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; }
+    .import-item .chk-nome { font-weight: 600; min-width: 70px; }
+    .import-item .chk-status { color: #94a3b8; font-size: 0.78rem; }
+    .import-item.ok .chk-status { color: #10b981; }
+    .btn-import { width: 100%; justify-content: center; }
+    .import-prompt { margin-top: 8px; font-size: 0.82rem; color: #4F46E5; font-weight: 600; min-height: 1em; text-align: center; }
 
     /* Preço Ofertado */
     .ofertado-wrap {
@@ -575,27 +583,27 @@
 <!-- TOAST (mensagem de importação) -->
 <div id="toast" class="toast"></div>
 
-<!-- IMPORTAR (compacto) -->
+<!-- IMPORTAR (assistente guiado) -->
 <div class="section">
-  <div class="section-title">Planilhas</div>
-  <div class="import-compact">
-    <div class="import-col">
-      <button class="btn btn-sm btn-indigo" onclick="document.getElementById('file-input-compras').click()">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-        Compras
-      </button>
-      <div class="import-info-mini" id="import-info-compras">Não carregada</div>
+  <div class="section-title">Planilhas do Linear</div>
+  <div class="import-checklist">
+    <div class="import-item" id="chk-compras">
+      <span class="chk-mark">⬜</span>
+      <span class="chk-nome">Compras</span>
+      <span class="chk-status" id="status-compras">Não carregada</span>
     </div>
-    <div class="import-col">
-      <button class="btn btn-sm btn-teal" onclick="document.getElementById('file-input-vendas').click()">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-        Vendas
-      </button>
-      <div class="import-info-mini" id="import-info-vendas">Não carregada</div>
+    <div class="import-item" id="chk-vendas">
+      <span class="chk-mark">⬜</span>
+      <span class="chk-nome">Vendas</span>
+      <span class="chk-status" id="status-vendas">Não carregada</span>
     </div>
   </div>
-  <input type="file" id="file-input-compras" accept=".xlsx,.xls" onchange="importCompras(this)">
-  <input type="file" id="file-input-vendas" accept=".xlsx,.xls" onchange="importVendas(this)">
+  <button class="btn btn-indigo btn-import" id="btn-importar" onclick="iniciarImportacao()">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="5 3 19 12 5 21 5 3"/></svg>
+    Importar planilhas
+  </button>
+  <div class="import-prompt" id="import-prompt"></div>
+  <input type="file" id="file-input-import" accept=".xlsx,.xls" onchange="receberArquivo(this)">
 </div>
 
 <!-- CÂMERA AO VIVO -->
