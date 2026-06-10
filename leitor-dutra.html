@@ -762,82 +762,133 @@ function carregarTudo() {
 
 window.addEventListener('load', carregarTudo);
 
-// ─── Importar Compras ─────────────────────────────────────────────────────────
-function importCompras(input) {
-  const file = input.files[0];
-  if (!file) return;
-  lerXLSX(file, (rows, headers) => {
-    const col = makeColFinder(headers);
-    const colBarcode  = col(['cod. barra','cód. barra','cod barra','barras','ean','barcode']);
-    const colNome     = col(['descri','nome','produto']);
-    const colAnterior = col(['anterior']);
-    const colCompra   = col(['compra']);
-    const colCodigo   = col(['código','codigo','cod.','cod ']);
-    const colUM       = col(['um','unid']);
+// ─── Assistente de importação guiada ───────────────────────────────────────────
+let passoDone = new Set();   // ids importados na sequência atual
 
-    if (!colBarcode || !colNome) {
-      toast('Compras: não encontrei as colunas Cód. Barra e Descrição', 'err');
+function iniciarImportacao() {
+  passoDone = new Set();     // "pede sempre": recomeça do primeiro a cada clique
+  pedirAtual();
+}
+
+function indiceAtual() {
+  const lista = RelatoriosImport.RELATORIOS;
+  for (let i = 0; i < lista.length; i++) {
+    if (!passoDone.has(lista[i].id)) return i;
+  }
+  return lista.length;
+}
+
+function setPrompt(text) {
+  const el = document.getElementById('import-prompt');
+  if (el) el.textContent = text || '';
+}
+
+function pedirAtual() {
+  const lista = RelatoriosImport.RELATORIOS;
+  const idx = indiceAtual();
+  if (idx >= lista.length) { setPrompt(''); toast('Tudo importado ✅', 'ok'); return; }
+  const r = lista[idx];
+  const passo = passoDone.size + 1;
+  setPrompt(passo + ' de ' + lista.length + ' — me dê o relatório de ' + r.nome.toUpperCase());
+  document.getElementById('file-input-import').click();
+}
+
+function reabrirSeletor() {
+  setTimeout(() => document.getElementById('file-input-import').click(), 60);
+}
+
+function receberArquivo(input) {
+  const file = input.files[0];
+  input.value = '';
+  if (!file) return;   // cancelou o seletor → para a sequência
+  lerXLSX(file, (rows, headers) => {
+    const tipo = RelatoriosImport.detectarRelatorio(headers);
+    if (!tipo) {
+      toast('Esse arquivo não parece Compras nem Vendas. Confere o que exportou do Linear.', 'err');
+      reabrirSeletor();
       return;
     }
-
-    produtos = rows
-      .map(r => ({
-        codigo:   String(r[colCodigo]  || '').trim(),
-        barcode:  normBarcode(String(r[colBarcode] || '')),
-        nome:     normNome(String(r[colNome] || '')),
-        anterior: parsePreco(r[colAnterior]),
-        compra:   parsePreco(r[colCompra]),
-        um:       String(r[colUM] || '').trim(),
-      }))
-      .filter(p => p.barcode && p.nome);
-
-    const agora = new Date().toLocaleString('pt-BR');
-    salvarCompras({ produtos, nome: file.name, data: agora });
-    atualizarUICompras(file.name, agora);
-    atualizarBadge();
-    input.value = '';
-    flash();
-    toast('Compras importado — ' + produtos.length + ' produtos', 'ok');
+    const lista = RelatoriosImport.RELATORIOS;
+    const idx = indiceAtual();
+    const esperadoId = idx < lista.length ? lista[idx].id : null;
+    if (esperadoId && tipo !== esperadoId) {
+      const nomeTipo = RelatoriosImport.relatorioPorId(tipo).nome;
+      const nomeEsperado = lista[idx].nome;
+      if (!confirm('Opa, esse é o relatório de ' + nomeTipo + ', não o de ' + nomeEsperado + '. Uso como ' + nomeTipo + '?')) {
+        reabrirSeletor();
+        return;
+      }
+    }
+    const ok = aplicarImport(tipo, rows, headers, file.name);
+    if (ok) { passoDone.add(tipo); pedirAtual(); }
+    else { reabrirSeletor(); }
   });
 }
 
-// ─── Importar Vendas ──────────────────────────────────────────────────────────
-function importVendas(input) {
-  const file = input.files[0];
-  if (!file) return;
-  lerXLSX(file, (rows, headers) => {
-    const col = makeColFinder(headers);
-    const colBarcode = col(['cod. barra','cód. barra','cod barra','barras','ean','barcode']);
-    const colVenda   = col(['venda','vlr. vend','vlr vend','preco vend','prec. vend','p. venda','preço venda','preco de venda','prec venda']);
+function aplicarImport(tipo, rows, headers, fileName) {
+  if (tipo === 'compras') return aplicarImportCompras(rows, headers, fileName);
+  if (tipo === 'vendas')  return aplicarImportVendas(rows, headers, fileName);
+  return false;
+}
 
-    if (!colBarcode) {
-      toast('Vendas: não encontrei a coluna de código de barras', 'err');
-      return;
-    }
-    if (!colVenda) {
-      toast('Vendas: não encontrei a coluna de preço de venda', 'err');
-      return;
-    }
+// ─── Aplicadores (parsing reaproveitado do código antigo) ───────────────────────
+function aplicarImportCompras(rows, headers, fileName) {
+  const col = makeColFinder(headers);
+  const colBarcode  = col(['cod. barra','cód. barra','cod barra','barras','ean','barcode']);
+  const colNome     = col(['descri','nome','produto']);
+  const colAnterior = col(['anterior']);
+  const colCompra   = col(['compra']);
+  const colCodigo   = col(['código','codigo','cod.','cod ']);
+  const colUM       = col(['um','unid']);
 
-    vendasMap = {};
-    let total = 0;
-    rows.forEach(r => {
-      const bc = normBarcode(String(r[colBarcode] || ''));
-      const v  = parsePreco(r[colVenda]);
-      if (bc && v !== null) {
-        vendasMap[bc] = v;
-        total++;
-      }
-    });
+  if (!colBarcode || !colNome) {
+    toast('Compras: não encontrei as colunas Cód. Barra e Descrição', 'err');
+    return false;
+  }
 
-    const agora = new Date().toLocaleString('pt-BR');
-    vendasDataImport = agora;
-    salvarVendas({ map: vendasMap, nome: file.name, data: agora, total });
-    atualizarUIVendas(file.name, agora, total);
-    input.value = '';
-    flash();
-    toast('Vendas importado — ' + total + ' itens', 'ok');
+  produtos = rows
+    .map(r => ({
+      codigo:   String(r[colCodigo]  || '').trim(),
+      barcode:  normBarcode(String(r[colBarcode] || '')),
+      nome:     normNome(String(r[colNome] || '')),
+      anterior: parsePreco(r[colAnterior]),
+      compra:   parsePreco(r[colCompra]),
+      um:       String(r[colUM] || '').trim(),
+    }))
+    .filter(p => p.barcode && p.nome);
+
+  const agora = new Date().toLocaleString('pt-BR');
+  salvarCompras({ produtos, nome: fileName, data: agora });
+  atualizarUICompras(fileName, agora);
+  atualizarBadge();
+  flash();
+  toast('Compras importado — ' + produtos.length + ' produtos', 'ok');
+  return true;
+}
+
+function aplicarImportVendas(rows, headers, fileName) {
+  const col = makeColFinder(headers);
+  const colBarcode = col(['cod. barra','cód. barra','cod barra','barras','ean','barcode']);
+  const colVenda   = col(['venda','vlr. vend','vlr vend','preco vend','prec. vend','p. venda','preço venda','preco de venda','prec venda']);
+
+  if (!colBarcode) { toast('Vendas: não encontrei a coluna de código de barras', 'err'); return false; }
+  if (!colVenda)   { toast('Vendas: não encontrei a coluna de preço de venda', 'err'); return false; }
+
+  vendasMap = {};
+  let total = 0;
+  rows.forEach(r => {
+    const bc = normBarcode(String(r[colBarcode] || ''));
+    const v  = parsePreco(r[colVenda]);
+    if (bc && v !== null) { vendasMap[bc] = v; total++; }
   });
+
+  const agora = new Date().toLocaleString('pt-BR');
+  vendasDataImport = agora;
+  salvarVendas({ map: vendasMap, nome: fileName, data: agora, total });
+  atualizarUIVendas(fileName, agora, total);
+  flash();
+  toast('Vendas importado — ' + total + ' itens', 'ok');
+  return true;
 }
 
 // ─── Helpers de importação ────────────────────────────────────────────────────
@@ -861,26 +912,20 @@ function makeColFinder(headers) {
   return (termos) => headers.find(h => termos.some(t => norm(h).includes(norm(t)))) || null;
 }
 
-function montarInfoImport(el, nomeArq, data) {
-  el.className = 'import-info-mini ok';
-  const nome = document.createElement('span');
-  nome.className = 'im-nome';
-  nome.textContent = '✓ ' + nomeArq;
-  el.replaceChildren(nome);
-  const d = formatData(data);
-  if (d) {
-    const dt = document.createElement('span');
-    dt.className = 'im-data';
-    dt.textContent = d;
-    el.appendChild(dt);
+function marcarChecklist(id, nomeArq, data) {
+  const item = document.getElementById('chk-' + id);
+  if (!item) return;
+  item.classList.add('ok');
+  const mark = item.querySelector('.chk-mark');
+  if (mark) mark.textContent = '✅';
+  const st = item.querySelector('.chk-status');
+  if (st) {
+    const d = formatData(data);
+    st.textContent = '✓ ' + (nomeArq || '') + (d ? ' · ' + d : '');
   }
 }
-function atualizarUICompras(nomeArq, data) {
-  montarInfoImport(document.getElementById('import-info-compras'), nomeArq, data);
-}
-function atualizarUIVendas(nomeArq, data, total) {
-  montarInfoImport(document.getElementById('import-info-vendas'), nomeArq, data);
-}
+function atualizarUICompras(nomeArq, data) { marcarChecklist('compras', nomeArq, data); }
+function atualizarUIVendas(nomeArq, data, total) { marcarChecklist('vendas', nomeArq, data); }
 function atualizarBadge() {
   document.getElementById('badge-count').textContent =
     produtos.length ? produtos.length + ' produtos' : 'Sem dados';
