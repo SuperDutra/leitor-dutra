@@ -766,7 +766,11 @@ window.addEventListener('load', carregarTudo);
 let passoDone = new Set();   // ids importados na sequência atual
 
 function iniciarImportacao() {
-  passoDone = new Set();     // "pede sempre": recomeça do primeiro a cada clique
+  // "pede sempre": quando a passada anterior terminou (todos importados), recomeça
+  // do primeiro. Se ainda há relatório pendente, continua de onde parou — assim, se
+  // o navegador (celular) bloquear a reabertura automática do seletor depois de um
+  // arquivo, um toque no botão retoma a sequência em vez de reiniciar no meio.
+  if (indiceAtual() >= RelatoriosImport.RELATORIOS.length) passoDone = new Set();
   pedirAtual();
 }
 
