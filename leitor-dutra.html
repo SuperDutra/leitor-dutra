@@ -19,6 +19,7 @@
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <script src="lib/relatorios.js"></script>
+  <script src="lib/pacote.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
@@ -585,7 +586,7 @@
 
 <!-- IMPORTAR (assistente guiado) -->
 <div class="section">
-  <div class="section-title">Planilhas do Linear</div>
+  <div class="section-title">Preços</div>
   <div class="import-checklist">
     <div class="import-item" id="chk-compras">
       <span class="chk-mark">⬜</span>
@@ -602,6 +603,11 @@
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="5 3 19 12 5 21 5 3"/></svg>
     Importar planilhas
   </button>
+  <button class="btn btn-indigo btn-import" id="btn-atualizar-pc" onclick="atualizarDoPC()" style="margin-top:8px;">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+    Atualizar do PC
+  </button>
+  <div class="import-prompt" id="carga-estado"></div>
   <div class="import-prompt" id="import-prompt"></div>
   <input type="file" id="file-input-import" accept=".xlsx,.xls" onchange="receberArquivo(this)">
 </div>
@@ -648,11 +654,19 @@
   <div class="section-title" style="display:flex;justify-content:space-between;align-items:center;padding-bottom:10px;">
     <div style="display:flex;align-items:center;gap:7px;">
       <span id="ia-dot" class="ia-dot nok"></span>
-      <span>Configuração IA</span>
+      <span>Configuração</span>
     </div>
     <button onclick="toggleConfigIA()" id="btn-config-ia" style="background:none;border:none;cursor:pointer;font-size:0.75rem;color:#64748b;font-weight:600;-webkit-tap-highlight-color:transparent;">Mostrar ▼</button>
   </div>
   <div id="config-ia-body" style="display:none;padding:0 16px 14px;">
+    <div style="font-size:0.78rem;color:#94a3b8;margin-bottom:6px;line-height:1.5;">
+      Endereço do PC do escritório (Tailscale). Fica salvo apenas neste dispositivo.
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;">
+      <input type="text" id="pc-url-input" placeholder="https://escritorio.xxx.ts.net"
+             style="flex:1;padding:10px 12px;border:1.5px solid #e7d9b8;border-radius:12px;font-size:0.85rem;font-family:inherit;color:#1f2937;outline:none;background:#ffffff;">
+      <button class="btn btn-indigo btn-sm" onclick="salvarPcUrl()">Salvar</button>
+    </div>
     <div style="font-size:0.78rem;color:#94a3b8;margin-bottom:10px;line-height:1.5;">
       Necessário para a função Contagem de Prateleira.<br>A chave fica salva apenas neste dispositivo.
     </div>
@@ -737,7 +751,110 @@ function salvarCompras(data) {
 function salvarVendas(data) {
   try { localStorage.setItem('leitor_dutra_vendas', JSON.stringify(data)); } catch(e) {}
 }
+
+// ─── Atualizar do PC (Tailscale) ───────────────────────────────────────────────
+let cargaGerada = null;   // ISO da carga que está no aparelho, ou null
+
+function salvarPcUrl() {
+  const v = document.getElementById('pc-url-input').value.trim().replace(/\/+$/, '');
+  localStorage.setItem('leitor_dutra_pc_url', v);
+  toast(v ? 'Endereço do PC salvo' : 'Endereço do PC apagado', 'ok');
+}
+
+// Guarda em forma colunar: o nome dos campos repetido 17.756 vezes seria ~0,6 MB
+// de puro rótulo, e o localStorage do celular não tem essa folga.
+function salvarPacote(pacote) {
+  const compacto = JSON.stringify(PacoteLeitor.compactar(pacote));
+  try {
+    localStorage.setItem('leitor_dutra_pacote', compacto);
+  } catch (e) {
+    // Falha de espaço NÃO pode ser calada. E a frase precisa ser VERDADE: os preços
+    // novos JÁ estão na tela (aplicarPacote atualizou a memória antes de gravar) —
+    // o que se perde é a permanência. Dizer "continuam os antigos" seria falso.
+    throw new Error('Os preços novos estão na tela, mas não couberam na memória do ' +
+      'aparelho (' + Math.round(compacto.length / 1024) + ' KB) e vão sumir ao fechar o app.');
+  }
+}
+
+function aplicarPacote(pacote) {
+  const idx = PacoteLeitor.indexar(pacote.produtos);
+  produtos = pacote.produtos;
+  vendasMap = {};
+  Object.keys(idx).forEach(k => { if (idx[k].venda !== null) vendasMap[k] = idx[k].venda; });
+  cargaGerada = pacote.gerado;
+  salvarPacote(pacote);
+  atualizarBadge();
+  mostrarEstadoCarga();
+}
+
+function carregarPacoteSalvo() {
+  try {
+    const bruto = localStorage.getItem('leitor_dutra_pacote');
+    if (!bruto) return false;
+    const pacote = PacoteLeitor.expandir(JSON.parse(bruto));
+    const idx = PacoteLeitor.indexar(pacote.produtos);
+    produtos = pacote.produtos;
+    vendasMap = {};
+    Object.keys(idx).forEach(k => { if (idx[k].venda !== null) vendasMap[k] = idx[k].venda; });
+    cargaGerada = pacote.gerado;
+    return true;
+  } catch (e) { return false; }
+}
+
+// A data da carga fica SEMPRE na tela, inclusive quando tudo deu certo. Aviso que
+// só aparece em caso raro é o que ninguém entende quando aparece.
+function mostrarEstadoCarga(avisoFalha) {
+  const el = document.getElementById('carga-estado');
+  if (!el) return;
+  const quando = cargaGerada ? formatData(new Date(cargaGerada).toLocaleString('pt-BR')) : null;
+  if (avisoFalha) {
+    el.style.color = '#b45309';
+    el.textContent = quando
+      ? avisoFalha + ' — os preços na tela são de ' + quando + '.'
+      : avisoFalha + ' — não há preços neste aparelho ainda.';
+    return;
+  }
+  el.style.color = '#94a3b8';
+  el.textContent = quando ? 'Preços de ' + quando : 'Nenhuma carga do PC neste aparelho ainda.';
+}
+
+async function atualizarDoPC() {
+  const base = (localStorage.getItem('leitor_dutra_pc_url') || '').trim();
+  if (!base) {
+    toast('Falta o endereço do PC — abra Configuração', 'err');
+    document.getElementById('config-ia-body').style.display = 'block';
+    return;
+  }
+  const btn = document.getElementById('btn-atualizar-pc');
+  btn.disabled = true;
+  setPrompt('Buscando os preços no PC do escritório…');
+  try {
+    const r = await fetch(base + '/pacote', { cache: 'no-store' });
+    if (!r.ok) {
+      const j = await r.json().catch(() => ({}));
+      throw new Error(j.erro || 'O PC respondeu, mas não tinha carga nenhuma.');
+    }
+    const pacote = await r.json();
+    aplicarPacote(pacote);
+    setPrompt('');
+    flash();
+    toast('Atualizado — ' + pacote.linhas.toLocaleString('pt-BR') + ' produtos', 'ok');
+  } catch (e) {
+    setPrompt('');
+    // Mensagem em português, para quem opera a loja: o que falhou e o que fazer agora.
+    const msg = /Failed to fetch|NetworkError/i.test(e.message)
+      ? 'Não consegui falar com o PC do escritório — ele está ligado?'
+      : e.message;
+    mostrarEstadoCarga(msg);
+    toast(msg, 'err');
+  }
+  btn.disabled = false;
+}
+
 function carregarTudo() {
+  // O pacote do PC tem precedência: se existe, ele é o dado. Os blocos de planilha
+  // abaixo continuam vivos como plano B (máquina de casa, PC desligado).
+  if (carregarPacoteSalvo()) { mostrarEstadoCarga(); }
   try {
     const c = localStorage.getItem('leitor_dutra_v2');
     if (c) {
@@ -758,6 +875,9 @@ function carregarTudo() {
   atualizarBadge();
   carregarApiKey();
   renderHistorico();
+  const pcUrl = localStorage.getItem('leitor_dutra_pc_url');
+  if (pcUrl) document.getElementById('pc-url-input').value = pcUrl;
+  mostrarEstadoCarga();
 }
 
 window.addEventListener('load', carregarTudo);

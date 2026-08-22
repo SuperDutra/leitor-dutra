@@ -4,6 +4,7 @@ const PRE_CACHE = [
   '/leitor-dutra/leitor-dutra.html',
   '/leitor-dutra/manifest.json',
   '/leitor-dutra/lib/relatorios.js',
+  '/leitor-dutra/lib/pacote.js',
   '/leitor-dutra/logo.webp',
   'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js',
   'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js',
