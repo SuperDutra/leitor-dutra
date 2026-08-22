@@ -1181,9 +1181,8 @@ function norm(s) {
     .normalize('NFD').replace(/[̀-ͯ]/g, '')
     .replace(/[^a-z0-9 .]/g, '').trim();
 }
-function normBarcode(s) {
-  return s.replace(/\D/g, '').replace(/^0+(?=\d{8,})/, '') || s.trim();
-}
+// A chave vem do módulo — uma definição só, compartilhada com o pacote do servidor.
+const normBarcode = RelatoriosImport.normBarcode;
 function normNome(s) { return s.replace(/\s+/g, ' ').trim(); }
 function parsePreco(v) {
   if (v === '' || v === null || v === undefined) return null;

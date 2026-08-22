@@ -37,3 +37,26 @@ test('relatorioPorId devolve o nome amigável', () => {
   assert.strictEqual(R.relatorioPorId('vendas').nome, 'Vendas');
   assert.strictEqual(R.relatorioPorId('xxx'), null);
 });
+
+// A JUNÇÃO: o banco guarda com zeros à esquerda (varchar(14)), a câmera devolve cru.
+// Este teste alimenta os DOIS formatos de propósito. Com um formato só, ele
+// concordaria consigo mesmo e esconderia exatamente o defeito que existe para pegar.
+test('junção: EAN-8 do banco (com zeros) e da câmera (cru) viram a mesma chave', () => {
+  const doBanco  = '0000078912345';   // como es1a.es1_codbarra guarda
+  const daCamera = '78912345';        // como o leitor devolve
+  assert.strictEqual(R.normBarcode(doBanco), R.normBarcode(daCamera));
+});
+
+test('junção: EAN-13 sem zeros é idêntico dos dois lados', () => {
+  assert.strictEqual(R.normBarcode('7891000100103'), R.normBarcode('7891000100103'));
+  assert.strictEqual(R.normBarcode('7891000100103'), '7891000100103');
+});
+
+test('normBarcode nunca encurta abaixo de 8 dígitos', () => {
+  // Código interno curto: preserva o que sobra em vez de virar string vazia.
+  assert.strictEqual(R.normBarcode('0000000000031').length >= 8, true);
+});
+
+test('normBarcode descarta separadores que a câmera às vezes devolve', () => {
+  assert.strictEqual(R.normBarcode('789 1000-100103'), '7891000100103');
+});
