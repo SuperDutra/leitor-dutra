@@ -794,7 +794,12 @@ function salvarPacote(pacote) {
 
 function aplicarPacote(pacote) {
   const idx = PacoteLeitor.indexar(pacote.produtos);
-  produtos = pacote.produtos;
+  // produtos precisa da MESMA chave normalizada que vendasMap usa logo abaixo — achado
+  // na varredura do fix round 2. pacote.produtos chega CRU do banco (varchar(14), zero
+  // à esquerda); sem isto, vendasMap[p.barcode] (usado em toda a tela) nunca bateria
+  // para nenhum código de barras com zero à esquerda, e a venda voltaria null/undefined
+  // em silêncio. idx já é a versão normalizada — reaproveitar em vez de normalizar de novo.
+  produtos = Object.keys(idx).map(k => Object.assign({}, idx[k], { barcode: k }));
   vendasMap = {};
   Object.keys(idx).forEach(k => { if (idx[k].venda !== null) vendasMap[k] = idx[k].venda; });
   cargaGerada = pacote.gerado;
@@ -811,7 +816,8 @@ function carregarPacoteSalvo() {
     if (!bruto) return false;
     const pacote = PacoteLeitor.expandir(JSON.parse(bruto));
     const idx = PacoteLeitor.indexar(pacote.produtos);
-    produtos = pacote.produtos;
+    // Espelho do mesmo conserto em aplicarPacote — mesma razão, mesma chave normalizada.
+    produtos = Object.keys(idx).map(k => Object.assign({}, idx[k], { barcode: k }));
     vendasMap = {};
     Object.keys(idx).forEach(k => { if (idx[k].venda !== null) vendasMap[k] = idx[k].venda; });
     cargaGerada = pacote.gerado;
@@ -1034,8 +1040,14 @@ function aplicarImportCompras(rows, headers, fileName) {
   // banco de todo produto, mesmo com origemVenda continuando 'banco' e o preço de
   // venda intocado: o mesmo defeito que este round consertou do lado da venda,
   // agora do lado da compra.
+  // A chave tem de ser normBarcode DOS DOIS LADOS — e este era o lado que faltava.
+  // p.barcode vem cru do banco (pode ter zero a esquerda); a chave usada na leitura
+  // logo abaixo (`barcode`) ja passa por normBarcode. Gravar com a chave crua fazia
+  // as duas pontas nunca coincidirem em qualquer codigo de barras com zero a esquerda
+  // — o mesmo defeito que produtos.find/vendasMap[] evitam usando a MESMA normBarcode
+  // nas duas pontas.
   const dataVendaPorBarcode = {};
-  produtos.forEach(p => { if (p.dataVenda) dataVendaPorBarcode[p.barcode] = p.dataVenda; });
+  produtos.forEach(p => { if (p.dataVenda) dataVendaPorBarcode[normBarcode(p.barcode)] = p.dataVenda; });
 
   produtos = rows
     .map(r => {
