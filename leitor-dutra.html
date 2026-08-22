@@ -723,6 +723,12 @@
 let produtos  = [];   // [{codigo, barcode, nome, anterior, compra, um}]
 let vendasMap = {};   // { barcode: venda }
 let vendasDataImport = null;  // data da última importação de vendas
+
+// produtos e vendasMap são DUAS origens independentes — cada uma pode ter sido
+// substituída sozinha (importar só Compras, ou só Vendas), e uma variável única
+// não consegue descrever isso sem mentir sobre um dos dois lados. Por isso duas.
+let origemCompra = null;   // 'banco' | 'planilha' | null — de onde vieram produtos/p.dataCompra
+let origemVenda  = null;   // 'banco' | 'planilha' | null — de onde veio vendasMap/p.dataVenda
 let html5QrCode = null;
 let scannerAtivo = false;
 let toastTimer = null;
@@ -792,6 +798,8 @@ function aplicarPacote(pacote) {
   vendasMap = {};
   Object.keys(idx).forEach(k => { if (idx[k].venda !== null) vendasMap[k] = idx[k].venda; });
   cargaGerada = pacote.gerado;
+  origemCompra = 'banco';
+  origemVenda  = 'banco';
   salvarPacote(pacote);
   atualizarBadge();
   mostrarEstadoCarga();
@@ -807,6 +815,8 @@ function carregarPacoteSalvo() {
     vendasMap = {};
     Object.keys(idx).forEach(k => { if (idx[k].venda !== null) vendasMap[k] = idx[k].venda; });
     cargaGerada = pacote.gerado;
+    origemCompra = 'banco';
+    origemVenda  = 'banco';
     return true;
   } catch (e) { return false; }
 }
@@ -821,20 +831,39 @@ function carregarPacoteSalvo() {
 function mostrarEstadoCarga(avisoFalha) {
   const el = document.getElementById('carga-estado');
   if (!el) return;
+  // cargaGerada é a data da ÚLTIMA vez que o app falou com o PC — continua existindo
+  // mesmo depois de uma planilha substituir metade do dado (compra OU venda). Por
+  // isso a frase não pode se basear só nela: precisa olhar origemCompra/origemVenda
+  // para saber se o que está na tela AINDA é, por inteiro, aquela carga.
   const quando = cargaGerada ? formatData(new Date(cargaGerada).toLocaleString('pt-BR')) : null;
+  const doBanco = origemCompra === 'banco' && origemVenda === 'banco';
+  const metadeDoBanco = !doBanco && (origemCompra === 'banco' || origemVenda === 'banco');
+  const ladoTrocado = origemCompra === 'banco' ? 'venda' : 'compra';   // só faz sentido quando metadeDoBanco
+
   if (avisoFalha) {
     el.style.color = '#b45309';
-    if (quando) {
+    if (quando && doBanco) {
       el.textContent = avisoFalha + ' — os preços na tela são de ' + quando + '.';
-    } else if (produtos.length) {
+    } else if (quando && metadeDoBanco) {
+      el.textContent = avisoFalha + ' — os preços na tela são de ' + quando + ', exceto a ' + ladoTrocado + ' (planilha).';
+    } else if (produtos.length || Object.keys(vendasMap).length) {
       el.textContent = avisoFalha + ' — os preços na tela são de planilha importada, não do PC.';
     } else {
       el.textContent = avisoFalha + ' — não há preços neste aparelho ainda.';
     }
     return;
   }
+
   el.style.color = '#94a3b8';
-  el.textContent = quando ? 'Preços de ' + quando : 'Nenhuma carga do PC neste aparelho ainda.';
+  if (doBanco) {
+    el.textContent = quando ? 'Preços de ' + quando : 'Nenhuma carga do PC neste aparelho ainda.';
+  } else if (metadeDoBanco) {
+    el.textContent = 'Preços de ' + quando + ' — só a ' + ladoTrocado + ' foi trocada por planilha.';
+  } else if (produtos.length || Object.keys(vendasMap).length) {
+    el.textContent = 'Preços de planilha importada, não do PC.';
+  } else {
+    el.textContent = 'Nenhuma carga do PC neste aparelho ainda.';
+  }
 }
 
 async function atualizarDoPC() {
@@ -886,6 +915,7 @@ function carregarTudo() {
       if (c) {
         const d = JSON.parse(c);
         produtos = d.produtos || [];
+        origemCompra = produtos.length ? 'planilha' : null;
         atualizarUICompras(d.nome, d.data);
       }
     } catch(e) {}
@@ -895,6 +925,7 @@ function carregarTudo() {
         const d = JSON.parse(v);
         vendasMap = d.map || {};
         vendasDataImport = d.data || null;
+        origemVenda = Object.keys(vendasMap).length ? 'planilha' : null;
         atualizarUIVendas(d.nome, d.data, d.total);
       }
     } catch(e) {}
@@ -997,25 +1028,41 @@ function aplicarImportCompras(rows, headers, fileName) {
     return false;
   }
 
+  // p.dataVenda mora fisicamente no registro de PRODUTOS (decisão da Task 3), mas
+  // pertence conceitualmente à origem da VENDA, não da compra — e este bloco troca
+  // `produtos` por INTEIRO. Sem isto, importar só Compras apagaria o dataVenda do
+  // banco de todo produto, mesmo com origemVenda continuando 'banco' e o preço de
+  // venda intocado: o mesmo defeito que este round consertou do lado da venda,
+  // agora do lado da compra.
+  const dataVendaPorBarcode = {};
+  produtos.forEach(p => { if (p.dataVenda) dataVendaPorBarcode[p.barcode] = p.dataVenda; });
+
   produtos = rows
-    .map(r => ({
-      codigo:   String(r[colCodigo]  || '').trim(),
-      barcode:  normBarcode(String(r[colBarcode] || '')),
-      nome:     normNome(String(r[colNome] || '')),
-      anterior: parsePreco(r[colAnterior]),
-      compra:   parsePreco(r[colCompra]),
-      um:       String(r[colUM] || '').trim(),
-      dataCompra: null,
-      dataVenda:  null,
-    }))
+    .map(r => {
+      const barcode = normBarcode(String(r[colBarcode] || ''));
+      return {
+        codigo:   String(r[colCodigo]  || '').trim(),
+        barcode:  barcode,
+        nome:     normNome(String(r[colNome] || '')),
+        anterior: parsePreco(r[colAnterior]),
+        compra:   parsePreco(r[colCompra]),
+        um:       String(r[colUM] || '').trim(),
+        dataCompra: null,
+        dataVenda:  dataVendaPorBarcode[barcode] || null,
+      };
+    })
     .filter(p => p.barcode && p.nome);
 
-  cargaGerada = null;   // a planilha substituiu o pacote: as datas do banco nao valem mais
+  // Só a COMPRA foi substituída — vendasMap/origemVenda seguem de onde estavam.
+  // NÃO zerar cargaGerada aqui: se a venda ainda é do banco, a data dela continua
+  // verdadeira, e cargaGerada é quem a linha de estado do topo usa para dizê-la.
+  origemCompra = 'planilha';
 
   const agora = new Date().toLocaleString('pt-BR');
   salvarCompras({ produtos, nome: fileName, data: agora });
   atualizarUICompras(fileName, agora);
   atualizarBadge();
+  mostrarEstadoCarga();   // origemCompra mudou — a linha de estado do topo precisa refletir isso AGORA
   flash();
   toast('Compras importado — ' + produtos.length + ' produtos', 'ok');
   return true;
@@ -1039,8 +1086,12 @@ function aplicarImportVendas(rows, headers, fileName) {
 
   const agora = new Date().toLocaleString('pt-BR');
   vendasDataImport = agora;
+  // Só a VENDA foi substituída — produtos/origemCompra seguem de onde estavam.
+  // É o gêmeo do comentário em aplicarImportCompras: cada origem muda sozinha.
+  origemVenda = 'planilha';
   salvarVendas({ map: vendasMap, nome: fileName, data: agora, total });
   atualizarUIVendas(fileName, agora, total);
+  mostrarEstadoCarga();   // origemVenda mudou — a linha de estado do topo precisa refletir isso AGORA
   flash();
   toast('Vendas importado — ' + total + ' itens', 'ok');
   return true;
@@ -1228,13 +1279,18 @@ function mostrarResultado(p) {
 
   // Antes esta linha mostrava a data em que o RENÊ importou a planilha. Agora mostra
   // desde quando o preço VALE, que é outra pergunta e é a que interessa na gôndola.
-  // "desde antes de fev/26" é uma afirmação sobre o dado do BANCO — só pode aparecer
-  // quando cargaGerada confirma que a carga veio de lá; planilha usa a data dela mesma.
+  // "desde antes de fev/26" é uma afirmação sobre o dado do BANCO — e o dado do preço
+  // de VENDA é vendasMap, não produtos. Por isso quem decide é origemVenda, não
+  // cargaGerada: cargaGerada só diz quando o app falou com o PC pela última vez, e
+  // continua setado mesmo depois de uma planilha substituir só a venda (ou só a
+  // compra) — usá-lo aqui faria a caixa errada herdar a frase do banco.
   const vendaDataHtml = `<div class="price-diff" style="color:#94a3b8">${
-    cargaGerada ? textoData(p.dataVenda, 'desde antes de fev/26')
+    origemVenda === 'banco' ? textoData(p.dataVenda, 'desde antes de fev/26')
                 : (vendasDataImport ? 'planilha de ' + formatData(vendasDataImport) : 'planilha não carregada')}</div>`;
 
-  const compraDataHtml = p.dataCompra
+  // Espelho do de cima: a compra vem de `produtos`, então quem decide é origemCompra.
+  // As duas origens são independentes — uma pode ser 'banco' e a outra 'planilha'.
+  const compraDataHtml = (origemCompra === 'banco' && p.dataCompra)
     ? `<div class="price-diff" style="color:#94a3b8">${textoData(p.dataCompra)}</div>`
     : '';
 
