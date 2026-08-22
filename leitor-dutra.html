@@ -727,8 +727,8 @@ let vendasDataImport = null;  // data da última importação de vendas
 // produtos e vendasMap são DUAS origens independentes — cada uma pode ter sido
 // substituída sozinha (importar só Compras, ou só Vendas), e uma variável única
 // não consegue descrever isso sem mentir sobre um dos dois lados. Por isso duas.
-let origemCompra = null;   // 'banco' | 'planilha' | null — de onde vieram produtos/p.dataCompra
-let origemVenda  = null;   // 'banco' | 'planilha' | null — de onde veio vendasMap/p.dataVenda
+let origemCompra = null;   // 'banco' | 'planilha' | null — de onde vieram produtos/p.compraDesde
+let origemVenda  = null;   // 'banco' | 'planilha' | null — de onde veio vendasMap/p.ultimaVenda
 let html5QrCode = null;
 let scannerAtivo = false;
 let toastTimer = null;
@@ -750,14 +750,28 @@ function formatData(str) {
   return m ? m[1] + ' ' + m[2] : str;
 }
 
-// A data do preço de venda só existe desde 04/02/2026 (é quando a tabela de
-// alteração de preço do SGLinear começou a gravar). Para os ~70% de produtos cujo
-// preço não muda desde antes disso, a resposta honesta é dizer isso — nunca uma
-// data inventada, e nunca campo vazio que pareça defeito.
+function formatDataCurta(iso) {
+  const [a, m, d] = String(iso).split('-');
+  return d + '/' + m + (a !== String(new Date().getFullYear()) ? '/' + a.slice(2) : '');
+}
+
+// compraDesde é a data da ÚLTIMA ALTERAÇÃO do preço de compra — vem da movpreco, e
+// essa tabela só existe desde 04/02/2026. Para os produtos cujo preço não mudou
+// desde antes disso, a resposta honesta é dizer isso — nunca uma data inventada, e
+// nunca campo vazio que pareça defeito.
 function textoData(iso, rotuloSemData) {
   if (!iso) return rotuloSemData || '';
-  const [a, m, d] = String(iso).split('-');
-  return 'desde ' + d + '/' + m + (a !== String(new Date().getFullYear()) ? '/' + a.slice(2) : '');
+  return 'desde ' + formatDataCurta(iso);
+}
+
+// ultimaVenda é QUANDO o produto foi vendido pela última vez — não fala do preço,
+// então nunca leva "desde" (isso afirmaria algo sobre há quanto tempo o preço vale).
+// Sem data (nunca vendido, ou sentinela 1899 do banco), não mostra nada: não dá
+// para provar que o produto "nunca foi vendido" para um cadastro antigo, então o
+// app não afirma isso — só se cala.
+function textoUltimaVenda(iso) {
+  if (!iso) return '';
+  return 'vendido em ' + formatDataCurta(iso);
 }
 
 // ─── Persistência ─────────────────────────────────────────────────────────────
@@ -1103,9 +1117,9 @@ function aplicarImportCompras(rows, headers, fileName) {
     return false;
   }
 
-  // p.dataVenda mora fisicamente no registro de PRODUTOS (decisão da Task 3), mas
+  // p.ultimaVenda mora fisicamente no registro de PRODUTOS (decisão da Task 3), mas
   // pertence conceitualmente à origem da VENDA, não da compra — e este bloco troca
-  // `produtos` por INTEIRO. Sem isto, importar só Compras apagaria o dataVenda do
+  // `produtos` por INTEIRO. Sem isto, importar só Compras apagaria o ultimaVenda do
   // banco de todo produto, mesmo com origemVenda continuando 'banco' e o preço de
   // venda intocado: o mesmo defeito que este round consertou do lado da venda,
   // agora do lado da compra.
@@ -1115,8 +1129,8 @@ function aplicarImportCompras(rows, headers, fileName) {
   // as duas pontas nunca coincidirem em qualquer codigo de barras com zero a esquerda
   // — o mesmo defeito que produtos.find/vendasMap[] evitam usando a MESMA normBarcode
   // nas duas pontas.
-  const dataVendaPorBarcode = {};
-  produtos.forEach(p => { if (p.dataVenda) dataVendaPorBarcode[normBarcode(p.barcode)] = p.dataVenda; });
+  const ultimaVendaPorBarcode = {};
+  produtos.forEach(p => { if (p.ultimaVenda) ultimaVendaPorBarcode[normBarcode(p.barcode)] = p.ultimaVenda; });
 
   produtos = rows
     .map(r => {
@@ -1128,8 +1142,8 @@ function aplicarImportCompras(rows, headers, fileName) {
         anterior: parsePreco(r[colAnterior]),
         compra:   parsePreco(r[colCompra]),
         um:       String(r[colUM] || '').trim(),
-        dataCompra: null,
-        dataVenda:  dataVendaPorBarcode[barcode] || null,
+        compraDesde: null,
+        ultimaVenda: ultimaVendaPorBarcode[barcode] || null,
       };
     })
     .filter(p => p.barcode && p.nome);
@@ -1365,25 +1379,31 @@ function mostrarResultado(p) {
       </div>`;
   }
 
-  // Antes esta linha mostrava a data em que o RENÊ importou a planilha. Agora mostra
-  // desde quando o preço VALE, que é outra pergunta e é a que interessa na gôndola.
-  // "desde antes de fev/26" é uma afirmação sobre o dado do BANCO — e o dado do preço
-  // de VENDA é vendasMap, não produtos. Por isso quem decide é origemVenda, não
-  // cargaGerada: cargaGerada só diz quando o app falou com o PC pela última vez, e
-  // continua setado mesmo depois de uma planilha substituir só a venda (ou só a
-  // compra) — usá-lo aqui faria a caixa errada herdar a frase do banco.
+  // Esta linha mostra QUANDO o produto foi vendido pela última vez — não fala do
+  // preço (a data em que ele passou a valer é a da caixa Última Compra, ao lado).
+  // "vendido em ..." é uma afirmação sobre o dado do BANCO — e o dado da venda é
+  // vendasMap, não produtos. Por isso quem decide é origemVenda, não cargaGerada:
+  // cargaGerada só diz quando o app falou com o PC pela última vez, e continua
+  // setado mesmo depois de uma planilha substituir só a venda (ou só a compra) —
+  // usá-lo aqui faria a caixa errada herdar a frase do banco.
   // Sem preço de venda (temVenda false — produto está na planilha de compras mas
   // ainda não tem preço no pacote do banco, típico de item recém-comprado), não há
-  // o que "desde quando vale": o app mostra "Venda Atual —" na grade logo abaixo, e
-  // afirmar uma data ali seria dizer há quanto tempo vale um preço que não existe.
-  const vendaDataHtml = !temVenda ? '' : `<div class="price-diff" style="color:#94a3b8">${
-    origemVenda === 'banco' ? textoData(p.dataVenda, 'desde antes de fev/26')
-                : (vendasDataImport ? 'planilha de ' + formatData(vendasDataImport) : 'planilha não carregada')}</div>`;
+  // o que dizer: o app mostra "Venda Atual —" na grade logo abaixo.
+  // p.ultimaVenda nulo (nunca vendido, ou sentinela do banco) também não mostra
+  // nada — textoUltimaVenda nunca inventa texto para essa ausência.
+  const vendaTextoBanco = textoUltimaVenda(p.ultimaVenda);
+  const vendaDataHtml = !temVenda ? '' :
+    origemVenda === 'banco'
+      ? (vendaTextoBanco ? `<div class="price-diff" style="color:#94a3b8">${vendaTextoBanco}</div>` : '')
+      : `<div class="price-diff" style="color:#94a3b8">${vendasDataImport ? 'planilha de ' + formatData(vendasDataImport) : 'planilha não carregada'}</div>`;
 
-  // Espelho do de cima: a compra vem de `produtos`, então quem decide é origemCompra.
-  // As duas origens são independentes — uma pode ser 'banco' e a outra 'planilha'.
-  const compraDataHtml = (origemCompra === 'banco' && p.dataCompra)
-    ? `<div class="price-diff" style="color:#94a3b8">${textoData(p.dataCompra)}</div>`
+  // Espelho conceitual do de cima: a compra vem de `produtos`, então quem decide é
+  // origemCompra. As duas origens são independentes — uma pode ser 'banco' e a
+  // outra 'planilha'. Ao contrário da venda, aqui a data fala do PREÇO (desde
+  // quando ele vale) — por isso, com origem banco, sempre mostra algo: a data, ou
+  // o "desde antes de fev/26" quando a movpreco não alcança este produto.
+  const compraDataHtml = origemCompra === 'banco'
+    ? `<div class="price-diff" style="color:#94a3b8">${textoData(p.compraDesde, 'desde antes de fev/26')}</div>`
     : '';
 
   // Grade de preços — Venda Atual sempre visível
@@ -1864,6 +1884,6 @@ function expandirHistorico(i) {
 </script>
 
 <!-- Rodapé: versão (bater o olho p/ saber se o cache atualizou) -->
-<div class="app-version">Leitor Dutra · v11</div>
+<div class="app-version">Leitor Dutra · v12</div>
 </body>
 </html>

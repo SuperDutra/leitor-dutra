@@ -9,10 +9,10 @@ const PACOTE = {
   produtos: [
     { barcode: '0000078912345', codigo: '012345', nome: 'ARROZ TIPO 1 5KG',
       compra: 18.5, anterior: 17.9, venda: 24.9, um: 'UN',
-      dataCompra: '2026-08-21', dataVenda: '2026-07-13' },
+      compraDesde: '2026-08-21', ultimaVenda: '2026-07-13' },
     { barcode: '7891000100103', codigo: '000602', nome: 'LEITE INTEGRAL 1L',
       compra: 4.2, anterior: null, venda: 5.99, um: 'UN',
-      dataCompra: null, dataVenda: null },
+      compraDesde: null, ultimaVenda: null },
   ],
 };
 
@@ -26,8 +26,8 @@ test('null continua null — nunca vira 0 nem string vazia', () => {
   const volta = P.expandir(P.compactar(PACOTE));
   const leite = volta.produtos[1];
   assert.strictEqual(leite.anterior, null);
-  assert.strictEqual(leite.dataCompra, null);
-  assert.strictEqual(leite.dataVenda, null);
+  assert.strictEqual(leite.compraDesde, null);
+  assert.strictEqual(leite.ultimaVenda, null);
 });
 
 test('a forma compacta é bem menor que a forma legível', () => {
