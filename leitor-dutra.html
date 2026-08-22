@@ -803,15 +803,24 @@ function carregarPacoteSalvo() {
 
 // A data da carga fica SEMPRE na tela, inclusive quando tudo deu certo. Aviso que
 // só aparece em caso raro é o que ninguém entende quando aparece.
+//
+// cargaGerada nulo NÃO significa aparelho sem preço nenhum — pode haver planilha
+// importada. As três situações que a frase precisa separar: (a) sem preço nenhum
+// no aparelho; (b) tem preço de planilha, sem carga do PC; (c) tem carga do PC de
+// uma data. Cada uma afirma só o que o dado sustenta.
 function mostrarEstadoCarga(avisoFalha) {
   const el = document.getElementById('carga-estado');
   if (!el) return;
   const quando = cargaGerada ? formatData(new Date(cargaGerada).toLocaleString('pt-BR')) : null;
   if (avisoFalha) {
     el.style.color = '#b45309';
-    el.textContent = quando
-      ? avisoFalha + ' — os preços na tela são de ' + quando + '.'
-      : avisoFalha + ' — não há preços neste aparelho ainda.';
+    if (quando) {
+      el.textContent = avisoFalha + ' — os preços na tela são de ' + quando + '.';
+    } else if (produtos.length) {
+      el.textContent = avisoFalha + ' — os preços na tela são de planilha importada, não do PC.';
+    } else {
+      el.textContent = avisoFalha + ' — não há preços neste aparelho ainda.';
+    }
     return;
   }
   el.style.color = '#94a3b8';
@@ -852,26 +861,34 @@ async function atualizarDoPC() {
 }
 
 function carregarTudo() {
-  // O pacote do PC tem precedência: se existe, ele é o dado. Os blocos de planilha
-  // abaixo continuam vivos como plano B (máquina de casa, PC desligado).
-  if (carregarPacoteSalvo()) { mostrarEstadoCarga(); }
-  try {
-    const c = localStorage.getItem('leitor_dutra_v2');
-    if (c) {
-      const d = JSON.parse(c);
-      produtos = d.produtos || [];
-      atualizarUICompras(d.nome, d.data);
-    }
-  } catch(e) {}
-  try {
-    const v = localStorage.getItem('leitor_dutra_vendas');
-    if (v) {
-      const d = JSON.parse(v);
-      vendasMap = d.map || {};
-      vendasDataImport = d.data || null;
-      atualizarUIVendas(d.nome, d.data, d.total);
-    }
-  } catch(e) {}
+  // O pacote do PC tem precedência: se existe, ele é o dado, e os blocos de planilha
+  // abaixo NÃO rodam — rodar os dois sobrescreveria produtos/vendasMap com a planilha
+  // velha por cima do que o pacote acabou de carregar, sem erro e sem aviso, deixando
+  // a data do pacote escrita na tela enquanto o preço mostrado seria de outra fonte.
+  // Os blocos de planilha só rodam quando NÃO há pacote salvo — plano B (máquina de
+  // casa, PC desligado).
+  const temPacote = carregarPacoteSalvo();
+  if (temPacote) {
+    mostrarEstadoCarga();
+  } else {
+    try {
+      const c = localStorage.getItem('leitor_dutra_v2');
+      if (c) {
+        const d = JSON.parse(c);
+        produtos = d.produtos || [];
+        atualizarUICompras(d.nome, d.data);
+      }
+    } catch(e) {}
+    try {
+      const v = localStorage.getItem('leitor_dutra_vendas');
+      if (v) {
+        const d = JSON.parse(v);
+        vendasMap = d.map || {};
+        vendasDataImport = d.data || null;
+        atualizarUIVendas(d.nome, d.data, d.total);
+      }
+    } catch(e) {}
+  }
   atualizarBadge();
   carregarApiKey();
   renderHistorico();
