@@ -744,6 +744,16 @@ function formatData(str) {
   return m ? m[1] + ' ' + m[2] : str;
 }
 
+// A data do preço de venda só existe desde 04/02/2026 (é quando a tabela de
+// alteração de preço do SGLinear começou a gravar). Para os ~70% de produtos cujo
+// preço não muda desde antes disso, a resposta honesta é dizer isso — nunca uma
+// data inventada, e nunca campo vazio que pareça defeito.
+function textoData(iso, rotuloSemData) {
+  if (!iso) return rotuloSemData || '';
+  const [a, m, d] = String(iso).split('-');
+  return 'desde ' + d + '/' + m + (a !== String(new Date().getFullYear()) ? '/' + a.slice(2) : '');
+}
+
 // ─── Persistência ─────────────────────────────────────────────────────────────
 function salvarCompras(data) {
   try { localStorage.setItem('leitor_dutra_v2', JSON.stringify(data)); } catch(e) {}
@@ -995,8 +1005,12 @@ function aplicarImportCompras(rows, headers, fileName) {
       anterior: parsePreco(r[colAnterior]),
       compra:   parsePreco(r[colCompra]),
       um:       String(r[colUM] || '').trim(),
+      dataCompra: null,
+      dataVenda:  null,
     }))
     .filter(p => p.barcode && p.nome);
+
+  cargaGerada = null;   // a planilha substituiu o pacote: as datas do banco nao valem mais
 
   const agora = new Date().toLocaleString('pt-BR');
   salvarCompras({ produtos, nome: fileName, data: agora });
@@ -1212,10 +1226,17 @@ function mostrarResultado(p) {
       </div>`;
   }
 
-  // Data da última importação de vendas
-  const vendaDataHtml = vendasDataImport
-    ? `<div class="price-diff" style="color:#94a3b8">${vendasDataImport}</div>`
-    : `<div class="price-diff" style="color:#cbd5e1">Planilha não carregada</div>`;
+  // Antes esta linha mostrava a data em que o RENÊ importou a planilha. Agora mostra
+  // desde quando o preço VALE, que é outra pergunta e é a que interessa na gôndola.
+  // "desde antes de fev/26" é uma afirmação sobre o dado do BANCO — só pode aparecer
+  // quando cargaGerada confirma que a carga veio de lá; planilha usa a data dela mesma.
+  const vendaDataHtml = `<div class="price-diff" style="color:#94a3b8">${
+    cargaGerada ? textoData(p.dataVenda, 'desde antes de fev/26')
+                : (vendasDataImport ? 'planilha de ' + formatData(vendasDataImport) : 'planilha não carregada')}</div>`;
+
+  const compraDataHtml = p.dataCompra
+    ? `<div class="price-diff" style="color:#94a3b8">${textoData(p.dataCompra)}</div>`
+    : '';
 
   // Grade de preços — Venda Atual sempre visível
   const pricesHtml = `
@@ -1224,6 +1245,7 @@ function mostrarResultado(p) {
         <div class="price-label">Última Compra</div>
         <div class="price-value">${fmtPreco(p.compra)}</div>
         ${diffCompraHtml}
+        ${compraDataHtml}
       </div>
       <div class="price-box price-venda">
         <div class="price-label">Venda Atual</div>
