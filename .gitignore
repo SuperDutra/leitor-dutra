@@ -1,0 +1,8 @@
+# Notas de trabalho (specs/planos do Superpowers/SDD) — nao fazem parte do PWA
+# publico. Este repo e o github.com/SuperDutra/leitor-dutra, publicado no
+# GitHub Pages: nada aqui deveria vazar rascunho de trabalho.
+.superpowers/
+
+# Lixo comum de SO
+.DS_Store
+Thumbs.db

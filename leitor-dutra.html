@@ -773,8 +773,28 @@ let cargaGerada = null;   // ISO da carga que está no aparelho, ou null
 
 function salvarPcUrl() {
   const v = document.getElementById('pc-url-input').value.trim().replace(/\/+$/, '');
+  if (!v) {
+    localStorage.setItem('leitor_dutra_pc_url', '');
+    toast('Endereço do PC apagado', 'ok');
+    return;
+  }
+  // Sem validar aqui, um endereço colado sem "https://" vira URL RELATIVA — o fetch
+  // bate no próprio GitHub Pages (que responde 404), e a tela diria "o PC respondeu,
+  // mas não tinha carga nenhuma" — FALSO, o PC nunca foi chamado. E "http://" (sem o
+  // "s") é bloqueado pelo navegador (página HTTPS não chama endereço HTTP — conteúdo
+  // misto) e vira "ele está ligado?" — também enganoso, o PC está ligado. Este é
+  // literalmente o passo em que o dono cola o endereço do Tailscale pela 1ª vez, e a
+  // mensagem tem que apontar o erro, não deixar o app confuso duas telas depois.
+  if (!/^https?:\/\//i.test(v)) {
+    toast('Falta o "https://" no começo — cole o endereço INTEIRO do Tailscale (https://sua-maquina.seu-tailnet.ts.net)', 'err');
+    return;
+  }
+  if (/^http:\/\//i.test(v)) {
+    toast('Esse endereço é "http://" (sem o "s") — o navegador bloqueia. Use o endereço "https://" que o Tailscale gerou', 'err');
+    return;
+  }
   localStorage.setItem('leitor_dutra_pc_url', v);
-  toast(v ? 'Endereço do PC salvo' : 'Endereço do PC apagado', 'ok');
+  toast('Endereço do PC salvo', 'ok');
 }
 
 // Guarda em forma colunar: o nome dos campos repetido 17.756 vezes seria ~0,6 MB
@@ -805,6 +825,13 @@ function aplicarPacote(pacote) {
   cargaGerada = pacote.gerado;
   origemCompra = 'banco';
   origemVenda  = 'banco';
+  // Uma carga NOVA do PC é uma ação explícita do dono — ela supera qualquer plano B
+  // de planilha que estivesse ativo. Persistir 'banco' aqui é o que faz um import de
+  // planilha anterior parar de reaparecer sozinho depois desta atualização.
+  try {
+    localStorage.setItem('leitor_dutra_origem_compra', 'banco');
+    localStorage.setItem('leitor_dutra_origem_venda', 'banco');
+  } catch (e) {}
   salvarPacote(pacote);
   atualizarBadge();
   mostrarEstadoCarga();
@@ -905,6 +932,42 @@ async function atualizarDoPC() {
   btn.disabled = false;
 }
 
+// Restaura, por cima do pacote recém-carregado, o lado (compra ou venda) que uma
+// planilha tenha sobrescrito por último — lido de 'leitor_dutra_origem_compra' /
+// 'leitor_dutra_origem_venda', gravados em aplicarImportCompras/aplicarImportVendas
+// (e limpos de volta para 'banco' em aplicarPacote, quando chega carga nova do PC).
+// Sem chave persistida (instalação antiga, ou nunca houve override), não mexe em
+// nada — o pacote sozinho já é o comportamento correto de sempre.
+function aplicarOverridesDePlanilhaSalvos() {
+  try {
+    if (localStorage.getItem('leitor_dutra_origem_compra') === 'planilha') {
+      const c = localStorage.getItem('leitor_dutra_v2');
+      if (c) {
+        const d = JSON.parse(c);
+        if (d.produtos && d.produtos.length) {
+          produtos = d.produtos;
+          origemCompra = 'planilha';
+          atualizarUICompras(d.nome, d.data);
+        }
+      }
+    }
+  } catch (e) {}
+  try {
+    if (localStorage.getItem('leitor_dutra_origem_venda') === 'planilha') {
+      const v = localStorage.getItem('leitor_dutra_vendas');
+      if (v) {
+        const d = JSON.parse(v);
+        if (d.map && Object.keys(d.map).length) {
+          vendasMap = d.map;
+          vendasDataImport = d.data || null;
+          origemVenda = 'planilha';
+          atualizarUIVendas(d.nome, d.data, d.total);
+        }
+      }
+    }
+  } catch (e) {}
+}
+
 function carregarTudo() {
   // O pacote do PC tem precedência: se existe, ele é o dado, e os blocos de planilha
   // abaixo NÃO rodam — rodar os dois sobrescreveria produtos/vendasMap com a planilha
@@ -914,6 +977,12 @@ function carregarTudo() {
   // casa, PC desligado).
   const temPacote = carregarPacoteSalvo();
   if (temPacote) {
+    // O pacote é a base — mas um lado (compra OU venda) pode ter sido substituído
+    // por planilha DEPOIS da última carga do PC (plano B: PC desligado ou sem VPN),
+    // e essa escolha do dono precisa sobreviver a fechar/reabrir o app. Sem isto, o
+    // pacote antigo reassumia os dois lados em silêncio a cada reload, desfazendo a
+    // importação sem avisar — o dono podia ler preço velho na gôndola sem saber.
+    aplicarOverridesDePlanilhaSalvos();
     mostrarEstadoCarga();
   } else {
     try {
@@ -1069,6 +1138,10 @@ function aplicarImportCompras(rows, headers, fileName) {
   // NÃO zerar cargaGerada aqui: se a venda ainda é do banco, a data dela continua
   // verdadeira, e cargaGerada é quem a linha de estado do topo usa para dizê-la.
   origemCompra = 'planilha';
+  // Persistido para sobreviver ao fechar/reabrir o app (plano B: PC desligado ou
+  // sem VPN) — sem isto, o pacote antigo do banco reassumia a compra em silêncio no
+  // próximo carregarTudo(). Ver aplicarOverridesDePlanilhaSalvos().
+  try { localStorage.setItem('leitor_dutra_origem_compra', 'planilha'); } catch (e) {}
 
   const agora = new Date().toLocaleString('pt-BR');
   salvarCompras({ produtos, nome: fileName, data: agora });
@@ -1101,6 +1174,9 @@ function aplicarImportVendas(rows, headers, fileName) {
   // Só a VENDA foi substituída — produtos/origemCompra seguem de onde estavam.
   // É o gêmeo do comentário em aplicarImportCompras: cada origem muda sozinha.
   origemVenda = 'planilha';
+  // Gêmeo do comentário em aplicarImportCompras — persiste para o override
+  // sobreviver ao reload. Ver aplicarOverridesDePlanilhaSalvos().
+  try { localStorage.setItem('leitor_dutra_origem_venda', 'planilha'); } catch (e) {}
   salvarVendas({ map: vendasMap, nome: fileName, data: agora, total });
   atualizarUIVendas(fileName, agora, total);
   mostrarEstadoCarga();   // origemVenda mudou — a linha de estado do topo precisa refletir isso AGORA
@@ -1296,7 +1372,11 @@ function mostrarResultado(p) {
   // cargaGerada: cargaGerada só diz quando o app falou com o PC pela última vez, e
   // continua setado mesmo depois de uma planilha substituir só a venda (ou só a
   // compra) — usá-lo aqui faria a caixa errada herdar a frase do banco.
-  const vendaDataHtml = `<div class="price-diff" style="color:#94a3b8">${
+  // Sem preço de venda (temVenda false — produto está na planilha de compras mas
+  // ainda não tem preço no pacote do banco, típico de item recém-comprado), não há
+  // o que "desde quando vale": o app mostra "Venda Atual —" na grade logo abaixo, e
+  // afirmar uma data ali seria dizer há quanto tempo vale um preço que não existe.
+  const vendaDataHtml = !temVenda ? '' : `<div class="price-diff" style="color:#94a3b8">${
     origemVenda === 'banco' ? textoData(p.dataVenda, 'desde antes de fev/26')
                 : (vendasDataImport ? 'planilha de ' + formatData(vendasDataImport) : 'planilha não carregada')}</div>`;
 
